@@ -1,0 +1,110 @@
+name: Build Dependencies
+
+# Chạy mỗi 2 ngày lúc 02:00 UTC (09:00 VN)
+# 15 runs/tháng × ~5 phút = ~75 phút (tối ưu cho quota 2000 phút/tháng)
+on:
+  schedule:
+    - cron: '0 2 */2 * *'
+  workflow_dispatch:  # Cho phép chạy thủ công
+
+permissions:
+  contents: write
+
+env:
+  MUSL_TOOLCHAIN_URL: "https://musl.cc/arm-linux-musleabihf-cross.tgz"
+  MBEDTLS_REPO: "https://github.com/Mbed-TLS/mbedtls.git"
+  MBEDTLS_BRANCH: "mbedtls-2.28"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache musl toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: /opt/musl-toolchain
+          key: musl-arm-toolchain-v1
+
+      - name: Download musl cross-compiler
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          echo "⬇️ Downloading musl cross-compiler..."
+          wget -q "$MUSL_TOOLCHAIN_URL" -O /tmp/musl.tgz
+          mkdir -p /opt/musl-toolchain
+          tar -xzf /tmp/musl.tgz -C /opt/musl-toolchain --strip-components=1
+          rm /tmp/musl.tgz
+          echo "✅ Toolchain installed"
+
+      - name: Verify toolchain
+        run: |
+          export PATH="/opt/musl-toolchain/bin:$PATH"
+          arm-linux-musleabihf-gcc --version | head -1
+
+      - name: Clone mbedtls
+        run: |
+          echo "⬇️ Cloning mbedtls ($MBEDTLS_BRANCH)..."
+          git clone --depth=1 --branch "$MBEDTLS_BRANCH" "$MBEDTLS_REPO" /tmp/mbedtls
+          echo "✅ mbedtls cloned"
+
+      - name: Cross-compile mbedtls static libraries
+        run: |
+          export PATH="/opt/musl-toolchain/bin:$PATH"
+          cd /tmp/mbedtls
+
+          # Build with musl cross-compiler
+          make -j$(nproc) \
+            CC=arm-linux-musleabihf-gcc \
+            AR=arm-linux-musleabihf-ar \
+            CFLAGS="-march=armv7-a -mfpu=vfpv4 -O2 -DMBEDTLS_NO_PLATFORM_ENTROPY" \
+            lib
+
+          echo "📦 Built libraries:"
+          ls -lh library/*.a
+
+      - name: Package dependencies
+        run: |
+          mkdir -p /tmp/deps-package/{toolchain,include,lib}
+
+          # Toolchain (full cross-compiler)
+          cp -a /opt/musl-toolchain/* /tmp/deps-package/toolchain/
+
+          # mbedtls headers
+          cp -r /tmp/mbedtls/include/mbedtls /tmp/deps-package/include/
+
+          # mbedtls static libraries
+          cp /tmp/mbedtls/library/libmbedtls.a /tmp/deps-package/lib/
+          cp /tmp/mbedtls/library/libmbedx509.a /tmp/deps-package/lib/
+          cp /tmp/mbedtls/library/libmbedcrypto.a /tmp/deps-package/lib/
+
+          # Create tarball
+          cd /tmp/deps-package
+          tar -czf /tmp/deps.tar.gz .
+
+          echo "📦 Package size:"
+          ls -lh /tmp/deps.tar.gz
+
+      - name: Generate build info
+        run: |
+          echo "Build Date: $(date -u '+%Y-%m-%d %H:%M UTC')" > /tmp/build-info.txt
+          echo "Toolchain: $(PATH=/opt/musl-toolchain/bin:$PATH arm-linux-musleabihf-gcc --version | head -1)" >> /tmp/build-info.txt
+          echo "mbedtls Branch: $MBEDTLS_BRANCH" >> /tmp/build-info.txt
+          echo "mbedtls Commit: $(cd /tmp/mbedtls && git rev-parse --short HEAD)" >> /tmp/build-info.txt
+          cat /tmp/build-info.txt
+
+      - name: Update deps-latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deps-latest
+          name: "🔧 Pre-built Dependencies (Auto-updated)"
+          body_path: /tmp/build-info.txt
+          prerelease: false
+          make_latest: true
+          files: /tmp/deps.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

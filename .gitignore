@@ -1,0 +1,21 @@
+# Build outputs
+bin/
+predict
+*.o
+
+# Auto-generated dependencies (downloaded by setup.sh / GitHub Actions)
+deps/
+
+# Old directories (removed from repo)
+3libs/
+toolchain/
+
+# Secrets - NEVER commit
+asm/ghp
+*.token
+
+# Editor / OS
+.vscode/
+*.swp
+*~
+.DS_Store
