@@ -34,8 +34,20 @@ jobs:
       - name: Download musl cross-compiler
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
-          echo "⬇️ Downloading musl cross-compiler..."
-          curl -L --retry 3 --retry-delay 5 -o /tmp/musl.tgz "$MUSL_TOOLCHAIN_URL"
+          URLS=(
+            "https://more.musl.cc/11.2.1/x86_64-linux-musl/arm-linux-musleabihf-cross.tgz"
+            "https://musl.cc/arm-linux-musleabihf-cross.tgz"
+          )
+          for url in "${URLS[@]}"; do
+            echo "⬇️ Trying: $url"
+            if curl -fL --retry 2 --retry-delay 3 --connect-timeout 15 --max-time 300 -o /tmp/musl.tgz "$url"; then
+              echo "✅ Downloaded from $url"
+              break
+            fi
+            echo "❌ Failed: $url"
+            rm -f /tmp/musl.tgz
+          done
+          test -f /tmp/musl.tgz || { echo "❌ All download URLs failed"; exit 1; }
           mkdir -p /opt/musl-toolchain
           tar -xzf /tmp/musl.tgz -C /opt/musl-toolchain --strip-components=1
           rm /tmp/musl.tgz
