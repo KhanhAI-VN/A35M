@@ -13,7 +13,6 @@ permissions:
 env:
   MUSL_TOOLCHAIN_URL: "https://musl.cc/arm-linux-musleabihf-cross.tgz"
   MBEDTLS_REPO: "https://github.com/Mbed-TLS/mbedtls.git"
-  MBEDTLS_BRANCH: "mbedtls-2.28"
 
 jobs:
   build:
@@ -50,8 +49,8 @@ jobs:
 
       - name: Clone mbedtls
         run: |
-          echo "⬇️ Cloning mbedtls ($MBEDTLS_BRANCH)..."
-          git clone --depth=1 --branch "$MBEDTLS_BRANCH" "$MBEDTLS_REPO" /tmp/mbedtls
+          echo "⬇️ Cloning latest mbedtls..."
+          git clone --depth=1 "$MBEDTLS_REPO" /tmp/mbedtls
           echo "✅ mbedtls cloned"
 
       - name: Cross-compile mbedtls static libraries
@@ -95,7 +94,6 @@ jobs:
         run: |
           echo "Build Date: $(date -u '+%Y-%m-%d %H:%M UTC')" > /tmp/build-info.txt
           echo "Toolchain: $(PATH=/opt/musl-toolchain/bin:$PATH arm-linux-musleabihf-gcc --version | head -1)" >> /tmp/build-info.txt
-          echo "mbedtls Branch: $MBEDTLS_BRANCH" >> /tmp/build-info.txt
           echo "mbedtls Commit: $(cd /tmp/mbedtls && git rev-parse --short HEAD)" >> /tmp/build-info.txt
           cat /tmp/build-info.txt
 
