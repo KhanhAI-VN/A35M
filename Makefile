@@ -8,9 +8,10 @@ TOOLCHAIN  = $(DEPS_DIR)/toolchain
 CC         = $(TOOLCHAIN)/bin/arm-linux-musleabihf-gcc
 AS         = $(TOOLCHAIN)/bin/arm-linux-musleabihf-as
 
-# ─── Flags ───────────────────────────────────────────
-CFLAGS     = -march=armv7-a -mfpu=vfpv4 -O2 -Isrc -I$(DEPS_DIR)/include
-AFLAGS     = -march=armv7-a -mfpu=vfpv4
+# ─── Flags (Cortex-A7 / NEON / Hard-Float) ──────────
+CPU_FLAGS  = -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
+CFLAGS     = $(CPU_FLAGS) -O2 -Isrc -I$(DEPS_DIR)/include
+AFLAGS     = $(CPU_FLAGS)
 
 # ─── Output ──────────────────────────────────────────
 TARGET     = predict
