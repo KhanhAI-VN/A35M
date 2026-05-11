@@ -27,11 +27,7 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
 
     const char *file_path = "src/web/web.html";
     const char *mime = "text/html";
-
-    if (strcmp(url, "/web.css") == 0) {
-        file_path = "src/web/web.css";
-        mime = "text/css";
-    }
+    if (strcmp(url, "/web.css") == 0) { file_path = "src/web/web.css"; mime = "text/css"; }
 
     FILE *f = fopen(file_path, "r");
     if (!f) return send_res(c, "404 Not Found", MHD_HTTP_NOT_FOUND, "text/plain");
@@ -39,7 +35,7 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
     long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
     char *buf = malloc(sz + 1);
-    if (fread(buf, sz, 1, f) != 1 && sz > 0) { /* Handle read error */ }
+    if (fread(buf, sz, 1, f) != 1 && sz > 0) {}
     buf[sz] = 0;
     fclose(f);
     enum MHD_Result ret = send_res(c, buf, MHD_HTTP_OK, mime);
@@ -51,18 +47,17 @@ int main(int argc, char **argv) {
     if (argc > 1) {
         PredictionResult r = run_prediction(argv[1]);
         if (r.success) {
-            char chg[16];
-            snprintf(chg, sizeof(chg), "%+.2f%%", r.change_pct);
-            printf("┌───────────┬───────────────┬───────────┬────────────────┐\n"
-                   "│ %-10s│ Now: %8.2f │ Pred: %-4s │ Change: %6s │\n"
-                   "└───────────┴───────────────┴───────────┴────────────────┘\n",
-                   argv[1], r.last_price, r.trend ? "UP" : "DOWN", chg);
+            printf("\n  ASSET       PRICE           PRED     CHANGE\n");
+            printf("  ───────────────────────────────────────────\n");
+            printf("  %-10s  $%-13.2f  %-7s  %+.2f%%\n", 
+                   argv[1], r.last_price, r.trend ? "UP" : "DOWN", r.change_pct);
+            printf("  ───────────────────────────────────────────\n\n");
         }
         return 0;
     }
     struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, PORT, NULL, NULL, &handler, NULL, MHD_OPTION_END);
     if (!d) return 1;
-    printf("A35M Terminal: http://localhost:%d\nPress Enter to stop.\n", PORT);
+    printf("A35M Dashboard: http://localhost:%d\nPress Enter to stop.\n", PORT);
     getchar();
     MHD_stop_daemon(d);
     return 0;

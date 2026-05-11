@@ -9,16 +9,31 @@
 <body>
     <div class="terminal-container">
         <div class="terminal-header">
-            <div><span class="status-dot"></span>System: A35M_ENGINE_v4.2</div>
+            <div><span class="status-dot"></span>System: A35M_v4.2 // Active</div>
             <div id="utc-time">UTC: --:--:--</div>
         </div>
         
-        <pre id="dashboard">Initializing neural uplink...</pre>
+        <table class="terminal-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Last Price</th>
+                    <th>Prediction</th>
+                    <th>24h Change</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- Data injected here -->
+            </tbody>
+        </table>
         
-        <div class="terminal-footer" id="cycle-info">
-            - Next update in: 5.0s | Source: Binance API | WebSocket: Active
+        <div class="terminal-footer">
+            <div id="cycle-info">- Initializing...</div>
+            <div>WS_ACTIVE // SSL_SECURE</div>
         </div>
-        <div id="progress" class="loading-bar"></div>
+        <div class="loading-bar-container">
+            <div id="progress" class="loading-bar"></div>
+        </div>
     </div>
 
     <script>
@@ -32,15 +47,11 @@
             const elapsed = Date.now() - lastUpdateTime;
             const remaining = Math.max(0, (5000 - elapsed) / 1000).toFixed(1);
             
-            // Spinner animation: - \ | /
             const frames = ['-', '\\', '|', '/'];
-            const frameIndex = Math.floor(Date.now() / 150) % 4;
-            const spinner = frames[frameIndex];
+            const spinner = frames[Math.floor(Date.now() / 150) % 4];
             
-            document.getElementById('cycle-info').innerText = 
-                `${spinner} Next update in: ${remaining}s | Source: Binance API | WebSocket: Active`;
+            document.getElementById('cycle-info').innerText = `${spinner} Next sync in: ${remaining}s`;
             
-            // Update progress bar
             const progress = Math.min((elapsed / 5000) * 100, 100);
             document.getElementById('progress').style.width = `${progress}%`;
         }
@@ -53,32 +64,30 @@
         }
 
         async function update() {
-            const head = "┌───────────┬───────────────┬───────────┬────────────────┐\n";
-            const mid  = "├───────────┼───────────────┼───────────┼────────────────┤\n";
-            const end  = "└───────────┴───────────────┴───────────┴────────────────┘\n";
-            
-            let output = head;
-            for (let i = 0; i < coins.length; i++) {
-                const coin = coins[i];
+            const tbody = document.getElementById('table-body');
+            let rowsHtml = '';
+
+            for (const coin of coins) {
                 const data = await fetchCoin(coin);
                 if (data.success) {
-                    const price = data.price.toFixed(2).padStart(8);
-                    const pred = data.trend.padEnd(4);
+                    const price = data.price.toLocaleString('en-US', { minimumFractionDigits: 2 });
+                    const trendClass = data.trend === 'UP' ? 'pred-up' : 'pred-down';
                     const change = (data.change >= 0 ? '+' : '') + data.change.toFixed(2) + '%';
                     
-                    const c1 = " " + coin.padEnd(10);
-                    const c2 = " Now: " + price + " ";
-                    const c3 = " Pred: " + pred;
-                    const c4 = " Change: " + change.padStart(6) + " ";
-                    
-                    output += `│${c1}│${c2}│${c3}│${c4}│\n`;
+                    rowsHtml += `
+                        <tr>
+                            <td class="coin-name">${coin}</td>
+                            <td class="price-val">$ ${price}</td>
+                            <td class="${trendClass}">${data.trend}</td>
+                            <td class="change-val ${data.change >= 0 ? 'pred-up' : 'pred-down'}">${change}</td>
+                        </tr>
+                    `;
                 } else {
-                    output += `│ ${coin.padEnd(10)}│ Offline       │ ----      │ ----           │\n`;
+                    rowsHtml += `<tr><td class="coin-name">${coin}</td><td colspan="3" style="color:var(--text-dim)">Node offline</td></tr>`;
                 }
-                output += (i === coins.length - 1) ? end : mid;
             }
             
-            document.getElementById('dashboard').innerText = output;
+            tbody.innerHTML = rowsHtml;
             lastUpdateTime = Date.now();
         }
 
