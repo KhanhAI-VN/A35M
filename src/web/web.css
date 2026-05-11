@@ -73,7 +73,6 @@ body::before {
     100% { opacity: 1; }
 }
 
-/* New Professional Table Style */
 .terminal-table {
     width: 100%;
     border-collapse: collapse;
@@ -102,6 +101,28 @@ body::before {
 .pred-down { color: #ff4757; }
 .change-val { font-size: 12px; }
 
+/* Number Slide Animations */
+.animate-container {
+    display: inline-block;
+    vertical-align: bottom;
+    overflow: hidden;
+    height: 1.2em;
+    position: relative;
+}
+
+.slide-up { animation: slideUp 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
+.slide-down { animation: slideDown 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
+
+@keyframes slideUp {
+    0% { transform: translateY(100%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideDown {
+    0% { transform: translateY(-100%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+
 .terminal-footer {
     margin-top: 20px;
     font-size: 10px;
@@ -109,6 +130,43 @@ body::before {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.status-meta {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.modem-light {
+    width: 4px;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 4px var(--accent);
+    animation: pulse 2s infinite;
+}
+
+.modem-light.secure {
+    background: #0088ff;
+    box-shadow: 0 0 4px #0088ff;
+    animation: pulse 2s infinite;
+    animation-delay: 0.5s;
+}
+
+.bit-stream {
+    font-family: monospace;
+    opacity: 0.4;
+    font-size: 9px;
+    width: 75px;
+    display: inline-block;
+    text-align: right;
 }
 
 .loading-bar-container {

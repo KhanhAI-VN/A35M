@@ -23,13 +23,18 @@
                 </tr>
             </thead>
             <tbody id="table-body">
-                <!-- Data injected here -->
+                <tr id="row-BTC"><td>BTC</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-ETH"><td>ETH</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
             </tbody>
         </table>
         
         <div class="terminal-footer">
             <div id="cycle-info">- Initializing...</div>
-            <div>WS_ACTIVE // SSL_SECURE</div>
+            <div class="status-meta">
+                <span class="status-item"><span class="modem-light"></span>WS_ACTIVE</span>
+                <span class="status-item"><span class="modem-light secure"></span>SSL_SECURE</span>
+                <span id="bit-stream" class="bit-stream"></span>
+            </div>
         </div>
         <div class="loading-bar-container">
             <div id="progress" class="loading-bar"></div>
@@ -38,22 +43,19 @@
 
     <script>
         const coins = ['BTC', 'ETH'];
+        const prevData = { BTC: { price: 0, change: 0 }, ETH: { price: 0, change: 0 } };
         let lastUpdateTime = Date.now();
 
         function updateClock() {
             const now = new Date();
             document.getElementById('utc-time').innerText = `UTC: ${now.toISOString().substr(11, 8)}`;
-            
             const elapsed = Date.now() - lastUpdateTime;
             const remaining = Math.max(0, (5000 - elapsed) / 1000).toFixed(1);
-            
             const frames = ['-', '\\', '|', '/'];
-            const spinner = frames[Math.floor(Date.now() / 150) % 4];
-            
-            document.getElementById('cycle-info').innerText = `${spinner} Next sync in: ${remaining}s`;
-            
-            const progress = Math.min((elapsed / 5000) * 100, 100);
-            document.getElementById('progress').style.width = `${progress}%`;
+            document.getElementById('cycle-info').innerText = `${frames[Math.floor(Date.now() / 150) % 4]} Next sync in: ${remaining}s`;
+            const stream = Math.random().toString(16).toUpperCase().substr(2, 8);
+            document.getElementById('bit-stream').innerText = `[${stream}]`;
+            document.getElementById('progress').style.width = `${Math.min((elapsed / 5000) * 100, 100)}%`;
         }
 
         async function fetchCoin(coin) {
@@ -63,31 +65,38 @@
             } catch (e) { return { success: false }; }
         }
 
-        async function update() {
-            const tbody = document.getElementById('table-body');
-            let rowsHtml = '';
+        function createAnimatedValue(newValue, oldValue, formatFunc) {
+            if (newValue === oldValue || oldValue === 0) return formatFunc(newValue);
+            // Increase: from top down (slide-down)
+            // Decrease: from bottom up (slide-up)
+            const directionClass = newValue > oldValue ? 'slide-down' : 'slide-up';
+            return `<span class="animate-container"><span class="${directionClass}">${formatFunc(newValue)}</span></span>`;
+        }
 
+        async function update() {
             for (const coin of coins) {
                 const data = await fetchCoin(coin);
+                const row = document.getElementById(`row-${coin}`);
+                if (!row) continue;
+
                 if (data.success) {
-                    const price = data.price.toLocaleString('en-US', { minimumFractionDigits: 2 });
-                    const trendClass = data.trend === 'UP' ? 'pred-up' : 'pred-down';
-                    const change = (data.change >= 0 ? '+' : '') + data.change.toFixed(2) + '%';
+                    const priceCell = row.querySelector('.price');
+                    const predCell = row.querySelector('.pred');
+                    const changeCell = row.querySelector('.change');
+
+                    priceCell.innerHTML = createAnimatedValue(data.price, prevData[coin].price, (v) => `$ ${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
                     
-                    rowsHtml += `
-                        <tr>
-                            <td class="coin-name">${coin}</td>
-                            <td class="price-val">$ ${price}</td>
-                            <td class="${trendClass}">${data.trend}</td>
-                            <td class="change-val ${data.change >= 0 ? 'pred-up' : 'pred-down'}">${change}</td>
-                        </tr>
-                    `;
+                    predCell.innerText = data.trend;
+                    predCell.className = `pred ${data.trend === 'UP' ? 'pred-up' : 'pred-down'}`;
+
+                    changeCell.innerHTML = createAnimatedValue(data.change, prevData[coin].change, (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%');
+                    changeCell.className = `change change-val ${data.change >= 0 ? 'pred-up' : 'pred-down'}`;
+
+                    prevData[coin] = { price: data.price, change: data.change };
                 } else {
-                    rowsHtml += `<tr><td class="coin-name">${coin}</td><td colspan="3" style="color:var(--text-dim)">Node offline</td></tr>`;
+                    row.innerHTML = `<td class="coin-name">${coin}</td><td colspan="3" style="color:var(--text-dim)">Node offline</td>`;
                 }
             }
-            
-            tbody.innerHTML = rowsHtml;
             lastUpdateTime = Date.now();
         }
 
