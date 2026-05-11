@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&display=swap');
+
+:root {
+    --bg-color: #0a0c10;
+    --text-primary: #ffffff;
+    --text-dim: #545d68;
+    --accent: #00ff41; /* Classic terminal green for status */
+    --glow: rgba(255, 255, 255, 0.05);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    letter-spacing: -0.5px;
+}
+
+/* Scanline effect */
+body::before {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 2;
+    background-size: 100% 4px, 3px 100%;
+    pointer-events: none;
+}
+
+.terminal-container {
+    position: relative;
+    z-index: 3;
+    width: 100%;
+    max-width: 700px;
+    padding: 20px;
+}
+
+.terminal-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 5px;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: var(--accent);
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+pre {
+    line-height: 1.5;
+    font-size: 15px;
+    white-space: pre;
+    text-shadow: 0 0 5px var(--glow);
+    transition: all 0.3s ease;
+}
+
+.terminal-footer {
+    margin-top: 15px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    font-style: italic;
+}
+
+.loading-bar {
+    width: 0%;
+    height: 2px;
+    background: var(--text-primary);
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    transition: width 0.1s linear;
+}

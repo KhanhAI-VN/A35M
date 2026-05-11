@@ -1,80 +1,69 @@
-#include "include/models.h"
-#include "include/openSSL.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <time.h>
-#include <sys/time.h>
+#include <microhttpd.h>
+#include "include/inference.h"
 
-#define HOST "api.binance.com"
+#define PORT 8080
 
-int fetch_binance_data(const char *symbol, Kline *out, int limit) {
-    SSLConnection *c = create_ssl_connection(HOST);
-    char req[256], *res, *p, s[32];
-    int n = 0;
-    if (!c) return 0;
-    sprintf(req, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, HOST);
-    if ((res = http_get(c, req, NULL)) && (p = strstr(res, "\r\n\r\n")))
-        for (p += 4; n < limit && (p = strstr(p, "[")); ) {
-            if (p[1] == '[') { p++; continue; }
-            if (sscanf(++p, "%lld,\"%*[^\"]\",\"%*[^\"]\",\"%*[^\"]\",\"%[^\"]\"", &out[n].timestamp, s) >= 2)
-                out[n++].close = atof(s);
-            if (!(p = strstr(p, "]"))) break;
-        }
-    return free(res), cleanup_ssl_connection(c), n;
+static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int code, const char *type) {
+    struct MHD_Response *r = MHD_create_response_from_buffer(strlen(body), (void*)body, MHD_RESPMEM_MUST_COPY);
+    MHD_add_response_header(r, "Content-Type", type);
+    MHD_add_response_header(r, "Access-Control-Allow-Origin", "*");
+    enum MHD_Result ret = MHD_queue_response(c, code, r);
+    MHD_destroy_response(r);
+    return ret;
 }
 
-Model* download_model_from_github(const char *coin) {
-    SSLConnection *c = create_ssl_connection("raw.githubusercontent.com");
-    char req[256], *res, *b;
-    int n = 0;
-    Model *m = NULL;
-    if (!c) return NULL;
-    sprintf(req, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
-    if ((res = http_get(c, req, &n)) && (b = strstr(res, "\r\n\r\n")))
-        m = load_model((uint8_t*)(b + 4), n - (b + 4 - res));
-    return free(res), cleanup_ssl_connection(c), m;
+static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *url, const char *meth, const char *v, const char *data, size_t *s, void **ptr) {
+    if (strcmp(url, "/api/predict") == 0) {
+        const char *coin = MHD_lookup_connection_value(c, MHD_GET_ARGUMENT_KIND, "coin");
+        PredictionResult r = run_prediction(coin ? coin : "BTC");
+        char json[256];
+        snprintf(json, sizeof(json), "{\"success\":%s,\"price\":%.2f,\"change\":%.2f,\"trend\":\"%s\"}", 
+                 r.success ? "true" : "false", r.last_price, r.change_pct, r.trend ? "UP" : "DOWN");
+        return send_res(c, json, MHD_HTTP_OK, "application/json");
+    }
+
+    const char *file_path = "src/web/web.html";
+    const char *mime = "text/html";
+
+    if (strcmp(url, "/web.css") == 0) {
+        file_path = "src/web/web.css";
+        mime = "text/css";
+    }
+
+    FILE *f = fopen(file_path, "r");
+    if (!f) return send_res(c, "404 Not Found", MHD_HTTP_NOT_FOUND, "text/plain");
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(sz + 1);
+    if (fread(buf, sz, 1, f) != 1 && sz > 0) { /* Handle read error */ }
+    buf[sz] = 0;
+    fclose(f);
+    enum MHD_Result ret = send_res(c, buf, MHD_HTTP_OK, mime);
+    free(buf);
+    return ret;
 }
 
 int main(int argc, char **argv) {
-    const char *coin = argc > 1 ? argv[1] : "BTC";
-    printf("Loading %s model and data...\n", coin);
-
-    Model *model = download_model_from_github(coin);
-    if (!model) return fprintf(stderr, "Failed to load model.\n"), 1;
-
-    Kline klines[SEQ_LEN + 2];
-    char symbol[32];
-    sprintf(symbol, "%sUSDT", coin);
-    int count = fetch_binance_data(symbol, klines, SEQ_LEN + 2);
-    if (count < SEQ_LEN + 2) return printf("Insufficient data (%d/%d)\n", count, SEQ_LEN + 2), 1;
-
-    float input[SEQ_LEN];
-    for (int i = 0; i < SEQ_LEN; i++) input[i] = logf((float)klines[i+1].close) - logf((float)klines[i].close);
-
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
-    float pred_log_diff = predict(model, input);
-    gettimeofday(&end, NULL);
-
-    float last = (float)klines[count-1].close, prev = (float)klines[count-2].close;
-    float pred_price = last * expf(pred_log_diff);
-    time_t pred_ts = klines[count-1].timestamp / 1000 + 86400;
-    char pred_date[32];
-    strftime(pred_date, sizeof(pred_date), "%Y-%m-%d", gmtime(&pred_ts));
-
-    printf("\n========================================\n"
-           "Asset: %s\nPrediction Day: %s (UTC)\n"
-           "----------------------------------------\n"
-           "Forecast: %s (%+.4f%%)\n"
-           "Real-time: %+.4f%% (Price: %.2f)\n"
-           "Inference: %.2f ms\n"
-           "========================================\n",
-           coin, pred_date, (pred_price > last) ? "UP" : "DOWN", (expf(pred_log_diff) - 1) * 100,
-           ((last - prev) / prev) * 100, last,
-           (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0);
-
-    free_model(model);
+    if (argc > 1) {
+        PredictionResult r = run_prediction(argv[1]);
+        if (r.success) {
+            char chg[16];
+            snprintf(chg, sizeof(chg), "%+.2f%%", r.change_pct);
+            printf("┌───────────┬───────────────┬───────────┬────────────────┐\n"
+                   "│ %-10s│ Now: %8.2f │ Pred: %-4s │ Change: %6s │\n"
+                   "└───────────┴───────────────┴───────────┴────────────────┘\n",
+                   argv[1], r.last_price, r.trend ? "UP" : "DOWN", chg);
+        }
+        return 0;
+    }
+    struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, PORT, NULL, NULL, &handler, NULL, MHD_OPTION_END);
+    if (!d) return 1;
+    printf("A35M Terminal: http://localhost:%d\nPress Enter to stop.\n", PORT);
+    getchar();
+    MHD_stop_daemon(d);
     return 0;
 }

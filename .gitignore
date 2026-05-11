@@ -1,0 +1,22 @@
+# Executables
+btc_predict
+web_server
+
+# Objects and Libraries
+*.o
+*.a
+*.so
+
+# Model Files (Optional, as they are downloaded automatically)
+*.bin
+
+# Temporary and Log files
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Binaries from build
+bin/
+build/
+a35m
