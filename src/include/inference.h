@@ -31,6 +31,8 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
                 if (pos > 4) { memmove(buf, buf + pos - 4, 4); pos = 4; }
                 continue;
             }
+            if (!(pos > 11 && buf[9] == '2' && buf[10] == '0' && buf[11] == '0'))
+                { cleanup_ssl_connection(c); return 0; }
             p += 4; head = 1;
         }
         while (n < limit && (start = strstr(p, "["))) {
@@ -58,6 +60,7 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
     out[n] = 0;
     cleanup_ssl_connection(c);
     if ((b = strstr((char*)out, "\r\n\r\n"))) {
+        if (!(n > 11 && out[9] == '2' && out[10] == '0' && out[11] == '0')) return 0;
         int h = b + 4 - (char*)out;
         memmove(out, b + 4, n - h);
         return n - h;
