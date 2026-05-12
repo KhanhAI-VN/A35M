@@ -21,31 +21,37 @@ typedef struct {
 } PredictionResult;
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
-    SSLConnection *c = create_ssl_connection(BINANCE_HOST);
-    char req[256], *res, *p, s[32];
+    SSLConnection c = create_ssl_connection(BINANCE_HOST);
+    char req[256], *p, s[32];
+    char res[72 * 1024];
     int n = 0;
-    if (!c) return 0;
+    if (!c.ssl) return 0;
     sprintf(req, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
-    if ((res = http_get(c, req, NULL)) && (p = strstr(res, "\r\n\r\n")))
+    int len = send_http_request(&c, req, res, sizeof(res));
+    if (len > 0 && (p = strstr(res, "\r\n\r\n")))
         for (p += 4; n < limit && (p = strstr(p, "[")); ) {
             if (p[1] == '[') { p++; continue; }
             if (sscanf(++p, "%lld,\"%*[^\"]\",\"%*[^\"]\",\"%*[^\"]\",\"%[^\"]\"", &out[n].timestamp, s) >= 2)
                 out[n++].close = atof(s);
             if (!(p = strstr(p, "]"))) break;
         }
-    return free(res), cleanup_ssl_connection(c), n;
+    cleanup_ssl_connection(c);
+    return n;
 }
 
 static inline Model* download_model_from_github(const char *coin) {
-    SSLConnection *c = create_ssl_connection("raw.githubusercontent.com");
-    char req[256], *res, *b;
+    SSLConnection c = create_ssl_connection("raw.githubusercontent.com");
+    char req[256], *b;
+    char res[19 * 1024];
     int n = 0;
     Model *m = NULL;
-    if (!c) return NULL;
+    if (!c.ssl) return NULL;
     sprintf(req, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
-    if ((res = http_get(c, req, &n)) && (b = strstr(res, "\r\n\r\n")))
+    n = send_http_request(&c, req, res, sizeof(res));
+    if (n > 0 && (b = strstr(res, "\r\n\r\n")))
         m = load_model((uint8_t*)(b + 4), n - (b + 4 - res));
-    return free(res), cleanup_ssl_connection(c), m;
+    cleanup_ssl_connection(c);
+    return m;
 }
 
 static inline PredictionResult run_prediction(const char *coin) {

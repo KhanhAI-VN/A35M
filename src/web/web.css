@@ -101,26 +101,43 @@ body::before {
 .pred-down { color: #ff4757; }
 .change-val { font-size: 12px; }
 
-/* Number Slide Animations */
+/* Number Roll Animations */
 .animate-container {
-    display: inline-block;
+    display: inline-flex;
+    flex-direction: column;
     vertical-align: bottom;
     overflow: hidden;
     height: 1.2em;
     position: relative;
 }
 
-.slide-up { animation: slideUp 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
-.slide-down { animation: slideDown 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
-
-@keyframes slideUp {
-    0% { transform: translateY(100%); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
+.animate-container span {
+    display: block;
+    height: 1.2em;
+    line-height: 1.2em;
 }
 
-@keyframes slideDown {
-    0% { transform: translateY(-100%); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
+.slide-up-out { animation: slideUpOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+.slide-up-in { animation: slideUpIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+.slide-down-out { animation: slideDownOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+.slide-down-in { animation: slideDownIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+
+@keyframes slideUpIn {
+    0% { transform: translateY(0); opacity: 0; }
+    100% { transform: translateY(-100%); opacity: 1; }
+}
+@keyframes slideUpOut {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(-100%); opacity: 0; }
+}
+
+@keyframes slideDownIn {
+    0% { transform: translateY(-200%); opacity: 0; }
+    100% { transform: translateY(-100%); opacity: 1; }
+}
+@keyframes slideDownOut {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(100%); opacity: 0; }
 }
 
 .terminal-footer {

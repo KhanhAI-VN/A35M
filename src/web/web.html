@@ -9,7 +9,7 @@
 <body>
     <div class="terminal-container">
         <div class="terminal-header">
-            <div><span class="status-dot"></span>System: A35M_v4.2 // Active</div>
+            <div><span class="status-dot"></span>A35M</div>
             <div id="utc-time">UTC: --:--:--</div>
         </div>
         
@@ -25,6 +25,9 @@
             <tbody id="table-body">
                 <tr id="row-BTC"><td>BTC</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
                 <tr id="row-ETH"><td>ETH</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-SOL"><td>SOL</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-BNB"><td>BNB</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-XRP"><td>XRP</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
             </tbody>
         </table>
         
@@ -42,8 +45,14 @@
     </div>
 
     <script>
-        const coins = ['BTC', 'ETH'];
-        const prevData = { BTC: { price: 0, change: 0 }, ETH: { price: 0, change: 0 } };
+        const coins = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP'];
+        const prevData = { 
+            BTC: { price: 0, change: 0 }, 
+            ETH: { price: 0, change: 0 },
+            SOL: { price: 0, change: 0 },
+            BNB: { price: 0, change: 0 },
+            XRP: { price: 0, change: 0 }
+        };
         let lastUpdateTime = Date.now();
 
         function updateClock() {
@@ -67,10 +76,12 @@
 
         function createAnimatedValue(newValue, oldValue, formatFunc) {
             if (newValue === oldValue || oldValue === 0) return formatFunc(newValue);
-            // Increase: from top down (slide-down)
-            // Decrease: from bottom up (slide-up)
-            const directionClass = newValue > oldValue ? 'slide-down' : 'slide-up';
-            return `<span class="animate-container"><span class="${directionClass}">${formatFunc(newValue)}</span></span>`;
+            const isUp = newValue > oldValue;
+            const dir = isUp ? 'slide-down' : 'slide-up';
+            return `<span class="animate-container">
+                <span class="${dir}-out">${formatFunc(oldValue)}</span>
+                <span class="${dir}-in">${formatFunc(newValue)}</span>
+            </span>`;
         }
 
         async function update() {
