@@ -11,17 +11,20 @@ typedef struct { SSL *ssl; int sock; SSL_CTX *ctx; } SSLConnection;
 static inline void cleanup_ssl_connection(SSLConnection c) {
     if (c.ssl) SSL_free(c.ssl);
     if (c.sock >= 0) close(c.sock);
-    if (c.ctx) SSL_CTX_free(c.ctx);
 }
 
 static inline SSLConnection create_ssl_connection(const char *h) {
-    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
+    static SSL_CTX *ctx = NULL;
+    if (!ctx) { SSL_library_init(); ctx = SSL_CTX_new(TLS_client_method()); }
     struct hostent *he = gethostbyname(h);
     int s = socket(AF_INET, SOCK_STREAM, 0);
+    struct timeval tv = {5, 0}; // Timeout 5 giây
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     struct sockaddr_in a = {AF_INET, htons(443)};
     if (he) memcpy(&a.sin_addr, he->h_addr, he->h_length);
     if (!he || s < 0 || connect(s, (struct sockaddr*)&a, sizeof(a)) < 0) 
-        return close(s), SSL_CTX_free(ctx), (SSLConnection){0};
+        return close(s), (SSLConnection){0};
 
     SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, s);
