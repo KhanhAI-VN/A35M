@@ -1,7 +1,3 @@
-# Executables
-btc_predict
-web_server
-
 # Objects and Libraries
 *.o
 *.a
