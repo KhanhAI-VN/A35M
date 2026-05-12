@@ -43,22 +43,24 @@ static inline CoinCache* get_coin_cache(const char *coin) {
         c->last_sync_day = -1;
         return c;
     }
-    return &caches[0]; // Fallback to first slot if full
+    return &caches[0];
 }
 
 static inline int should_update_cache(CoinCache *cache) {
     time_t now = time(NULL);
-    struct tm *t = gmtime(&now);
-    if (t->tm_yday != cache->last_sync_day || t->tm_year != cache->last_sync_year || !cache->last_res.success)
+    struct tm t;
+    gmtime_r(&now, &t);
+    if (t.tm_yday != cache->last_sync_day || t.tm_year != cache->last_sync_year || !cache->last_res.success)
         return 1;
     return 0;
 }
 
 static inline void update_cache_day(CoinCache *cache) {
     time_t now = time(NULL);
-    struct tm *t = gmtime(&now);
-    cache->last_sync_day = t->tm_yday;
-    cache->last_sync_year = t->tm_year;
+    struct tm t;
+    gmtime_r(&now, &t);
+    cache->last_sync_day = t.tm_yday;
+    cache->last_sync_year = t.tm_year;
 }
 
 #endif

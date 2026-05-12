@@ -7,6 +7,8 @@
 #include <string.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <pthread.h>
+
 
 typedef struct { SSL *ssl; int sock; } SSLConnection;
 
@@ -17,13 +19,16 @@ typedef struct {
 
 static HostSession sessions[2] = {{0}};
 static const char *hosts[2] = {"api.binance.com", "raw.githubusercontent.com"};
+static pthread_mutex_t ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int new_session_cb(SSL *s, SSL_SESSION *sess) {
     const char *h = SSL_get_servername(s, TLSEXT_NAMETYPE_host_name);
     if (!h) return 0;
     int i = strcmp(h, hosts[0]) ? 1 : 0;
+    pthread_mutex_lock(&ssl_mutex);
     if (sessions[i].s) SSL_SESSION_free(sessions[i].s);
     sessions[i].s = sess; sessions[i].t = time(NULL);
+    pthread_mutex_unlock(&ssl_mutex);
     return 1;
 }
 
@@ -45,37 +50,63 @@ static inline SSLConnection create_ssl_connection(const char *h) {
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     struct sockaddr_in a = {AF_INET, htons(443)};
 
+    pthread_mutex_lock(&ssl_mutex);
     int i = strcmp(h, hosts[0]) ? 1 : 0;
     if (!sessions[i].ip[0] || difftime(time(NULL), sessions[i].ip_t) > 86400) {
+        pthread_mutex_unlock(&ssl_mutex);
         struct addrinfo hints = {0}, *res; hints.ai_family = AF_INET;
         if (getaddrinfo(h, NULL, &hints, &res) == 0) {
+            pthread_mutex_lock(&ssl_mutex);
             inet_ntop(AF_INET, &((struct sockaddr_in *)res->ai_addr)->sin_addr, sessions[i].ip, 16);
-            sessions[i].ip_t = time(NULL); freeaddrinfo(res);
-        } else if (!sessions[i].ip[0]) return close(s), (SSLConnection){0};
+            sessions[i].ip_t = time(NULL);
+            pthread_mutex_unlock(&ssl_mutex);
+            freeaddrinfo(res);
+        } else {
+            pthread_mutex_lock(&ssl_mutex);
+            if (!sessions[i].ip[0]) { pthread_mutex_unlock(&ssl_mutex); return close(s), (SSLConnection){0}; }
+            pthread_mutex_unlock(&ssl_mutex);
+        }
+        pthread_mutex_lock(&ssl_mutex);
     }
     struct in_addr ia; inet_pton(AF_INET, sessions[i].ip, &ia);
     memcpy(&a.sin_addr, &ia, sizeof(ia));
+    
+    SSL_SESSION *sess = sessions[i].s;
+    if (sess && difftime(time(NULL), sessions[i].t) > 86400) sess = NULL;
+    pthread_mutex_unlock(&ssl_mutex);
+
     if (connect(s, (struct sockaddr*)&a, sizeof(a)) < 0) {
-        sessions[i].ip[0] = 0; return close(s), (SSLConnection){0};
+        pthread_mutex_lock(&ssl_mutex);
+        sessions[i].ip[0] = 0;
+        pthread_mutex_unlock(&ssl_mutex);
+        return close(s), (SSLConnection){0};
     }
 
     SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, s);
     SSL_set_tlsext_host_name(ssl, h);
-    if (sessions[i].s && difftime(time(NULL), sessions[i].t) <= 86400) SSL_set_session(ssl, sessions[i].s);
+    if (sess) SSL_set_session(ssl, sess);
 
     int r = SSL_connect(ssl);
     if (r <= 0) {
-        SSL_free(ssl); if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
+        SSL_free(ssl);
+        pthread_mutex_lock(&ssl_mutex);
+        if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
+        pthread_mutex_unlock(&ssl_mutex);
         ssl = SSL_new(ctx); SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
         r = SSL_connect(ssl);
         if (r <= 0) { close(s); return (SSLConnection){0}; }
     }
 
-    if (SSL_session_reused(ssl)) sessions[i].t = time(NULL);
+    if (SSL_session_reused(ssl)) {
+        pthread_mutex_lock(&ssl_mutex);
+        sessions[i].t = time(NULL);
+        pthread_mutex_unlock(&ssl_mutex);
+    }
 
     return (SSLConnection){ssl, s};
 }
+
 
 static inline int send_http_request(SSLConnection *c, const char *req, char *res, size_t sz) {
     SSL_write(c->ssl, req, strlen(req));
