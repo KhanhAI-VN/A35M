@@ -85,23 +85,39 @@ static float _feat[N_P * D_MODEL];
 static inline void patch_linear_forward(float *in, Model *m, const char *pre, float *out) {
     float *feat = _feat, avg[D_MODEL] = {0}, hid[D_MODEL];
     Tensor *wc = get_tp(m, pre, "_patch_conv_conv_weight"), *bc = get_tp(m, pre, "_patch_conv_conv_bias");
+    if (!wc || !bc) return;
+
     for (int p = 0; p < N_P; p++) for (int d = 0; d < D_MODEL; d++) {
         float v = bc->data[d], g = bc->data[d + D_MODEL];
         for (int k = 0; k < PATCH_LEN; k++) {
             float iv = (p * STRIDE + k < SEQ_LEN) ? in[p * STRIDE + k] : in[SEQ_LEN - 1];
             v += iv * wc->data[d * PATCH_LEN + k]; g += iv * wc->data[(d + D_MODEL) * PATCH_LEN + k];
         }
-        feat[d * N_P + p] = v * (0.5f * g * (1 + erff(g / 1.41421356f)));
+        feat[d * N_P + p] = v * (0.5f * g * (1 + erff(g * 0.70710678f)));
     }
-    for (int c = 0; c < D_MODEL; c++) { for (int p = 0; p < N_P; p++) avg[c] += feat[c * N_P + p]; avg[c] /= N_P; }
-    Tensor *w1 = get_tp(m, pre, "_patch_conv_se_fc_0_weight"), *b1 = get_tp(m, pre, "_patch_conv_se_fc_0_bias"), *w2 = get_tp(m, pre, "_patch_conv_se_fc_2_weight"), *b2 = get_tp(m, pre, "_patch_conv_se_fc_2_bias");
-    for (int i = 0; i < w1->dims[0]; i++) { hid[i] = b1->data[i]; for (int j = 0; j < D_MODEL; j++) hid[i] += avg[j] * w1->data[i * D_MODEL + j]; if (hid[i] < 0) hid[i] = 0; }
+    for (int c = 0; c < D_MODEL; c++) { 
+        for (int p = 0; p < N_P; p++) avg[c] += feat[c * N_P + p]; 
+        avg[c] /= N_P; 
+    }
+    Tensor *w1 = get_tp(m, pre, "_patch_conv_se_fc_0_weight"), *b1 = get_tp(m, pre, "_patch_conv_se_fc_0_bias"), 
+           *w2 = get_tp(m, pre, "_patch_conv_se_fc_2_weight"), *b2 = get_tp(m, pre, "_patch_conv_se_fc_2_bias");
+    if (!w1 || !b1 || !w2 || !b2) return;
+
+    for (int i = 0; i < (int)w1->dims[0]; i++) { 
+        hid[i] = b1->data[i]; 
+        for (int j = 0; j < D_MODEL; j++) hid[i] += avg[j] * w1->data[i * D_MODEL + j]; 
+        if (hid[i] < 0) hid[i] = 0; 
+    }
     for (int i = 0; i < D_MODEL; i++) {
-        float sc = b2->data[i]; for (int j = 0; j < w1->dims[0]; j++) sc += hid[j] * w2->data[i * w1->dims[0] + j];
-        sc = 1 / (1 + expf(-sc)); for (int p = 0; p < N_P; p++) feat[i * N_P + p] *= sc;
+        float sc = b2->data[i]; 
+        for (int j = 0; j < (int)w1->dims[0]; j++) sc += hid[j] * w2->data[i * w1->dims[0] + j];
+        sc = 1 / (1 + expf(-sc)); 
+        for (int p = 0; p < N_P; p++) feat[i * N_P + p] *= sc;
     }
     Tensor *wh = get_tp(m, pre, "_head_linear_weight"), *bh = get_tp(m, pre, "_head_linear_bias");
-    out[0] = bh->data[0]; for (int i = 0; i < D_MODEL * N_P; i++) out[0] += feat[i] * wh->data[i];
+    if (!wh || !bh) return;
+    out[0] = bh->data[0]; 
+    for (int i = 0; i < D_MODEL * N_P; i++) out[0] += feat[i] * wh->data[i];
 }
 
 static float _x[SEQ_LEN], _res[SEQ_LEN], _tr[SEQ_LEN];
