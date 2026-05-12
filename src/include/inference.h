@@ -68,8 +68,16 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
 static inline PredictionResult run_prediction(const char *coin) {
     const char *cname = coin ? coin : "BTC";
     char symbol[32]; sprintf(symbol, "%sUSDT", cname);
-    Kline latest[2];
+    Kline latest[2] = {0};
     int n = fetch_binance_data(symbol, latest, 2);
+    if (n < 2) {
+        pthread_mutex_lock(&cache_mutex);
+        CoinCache *cache = get_coin_cache(cname);
+        PredictionResult res = cache->last_res;
+        strcpy(res.coin, cache->coin);
+        pthread_mutex_unlock(&cache_mutex);
+        return res;
+    }
 
     pthread_mutex_lock(&cache_mutex);
     CoinCache *cache = get_coin_cache(cname);
@@ -144,13 +152,12 @@ static inline PredictionResult run_prediction(const char *coin) {
 
     PredictionResult res = cache->last_res;
     strcpy(res.coin, cache->coin);
-    if (n == 2) {
-        res.last_price = (float)latest[1].close;
-        float yesterday_close = (float)latest[0].close;
-        res.change_pct = ((res.last_price - yesterday_close) / yesterday_close) * 100.0f;
-        res.pred_price = res.last_price * expf(cache->pred_log_diff);
-        res.trend = (res.pred_price > res.last_price) ? 1 : 0;
-    }
+    res.last_price = (float)latest[1].close;
+    float yesterday_close = (float)latest[0].close;
+    res.change_pct = ((res.last_price - yesterday_close) / yesterday_close) * 100.0f;
+    res.pred_price = res.last_price * expf(cache->pred_log_diff);
+    res.trend = (res.pred_price > res.last_price) ? 1 : 0;
+
     pthread_mutex_unlock(&cache_mutex);
     return res;
 }
