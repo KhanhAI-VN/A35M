@@ -25,22 +25,15 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
         return send_res(c, json, MHD_HTTP_OK, "application/json");
     }
 
-    const char *file_path = "src/web/web.html";
-    const char *mime = "text/html";
-    if (strcmp(url, "/web.css") == 0) { file_path = "src/web/web.css"; mime = "text/css"; }
-
-    FILE *f = fopen(file_path, "r");
+    static char buf[8192];
+    const char *path = strcmp(url, "/web.css") == 0 ? "src/web/web.css" : "src/web/web.html";
+    FILE *f = fopen(path, "r");
     if (!f) return send_res(c, "404 Not Found", MHD_HTTP_NOT_FOUND, "text/plain");
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *buf = malloc(sz + 1);
-    if (fread(buf, sz, 1, f) != 1 && sz > 0) {}
+
+    size_t sz = fread(buf, 1, sizeof(buf) - 1, f);
     buf[sz] = 0;
     fclose(f);
-    enum MHD_Result ret = send_res(c, buf, MHD_HTTP_OK, mime);
-    free(buf);
-    return ret;
+    return send_res(c, buf, MHD_HTTP_OK, strcmp(url, "/web.css") == 0 ? "text/css" : "text/html");
 }
 
 int main(int argc, char **argv) {

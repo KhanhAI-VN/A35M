@@ -17,7 +17,7 @@ typedef struct { uint32_t version, num_tensors; Tensor *tensors; } Model;
 typedef struct { float mean, stdev; } RevINStats;
 typedef struct { double close; long long timestamp; } Kline;
 
-static uint8_t model_pool[18512];
+static uint8_t model_pool[18432];
 static size_t model_off = 0;
 
 static inline void* model_alloc(size_t sz) {

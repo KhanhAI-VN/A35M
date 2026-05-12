@@ -42,7 +42,7 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
 static inline Model* download_model_from_github(const char *coin) {
     SSLConnection c = create_ssl_connection("raw.githubusercontent.com");
     char req[256], *b;
-    char res[19 * 1024];
+    char res[18432];
     int n = 0;
     Model *m = NULL;
     if (!c.ssl) return NULL;
