@@ -2,6 +2,7 @@
 #define INFERENCE_H
 
 #include "models.h"
+#include "cache.h"
 #include "openSSL.h"
 #include <sys/time.h>
 
@@ -59,11 +60,17 @@ static inline PredictionResult run_prediction(const char *coin) {
     strcpy(res.coin, coin);
     res.success = 0;
 
-    Model *model = download_model_from_github(coin);
-    if (!model) {
-        strcpy(res.error_msg, "Failed to download model from GitHub.");
-        return res;
+    if (should_update_cache(coin)) {
+        Model *m = download_model_from_github(coin);
+        if (m) {
+            cached_model = m;
+            update_cache_metadata(coin);
+        } else if (!cached_model) {
+            strcpy(res.error_msg, "Failed to download model and no cache available.");
+            return res;
+        }
     }
+    Model *model = cached_model;
 
     Kline klines[SEQ_LEN + 2];
     char symbol[32];
