@@ -30,7 +30,6 @@ typedef struct {
     Model* model;
 } CoinCache;
 
-#define MAX_CACHED_COINS 5
 static CoinCache caches[MAX_CACHED_COINS];
 static int num_cached_coins = 0;
 

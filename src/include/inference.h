@@ -5,8 +5,11 @@
 #include "cache.h"
 #include "openSSL.h"
 #include <sys/time.h>
+#include <pthread.h>
 
 #define BINANCE_HOST "api.binance.com"
+
+static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
@@ -43,6 +46,7 @@ static inline Model* download_model_from_github(const char *coin) {
 }
 
 static inline PredictionResult run_prediction(const char *coin) {
+    pthread_mutex_lock(&cache_mutex);
     CoinCache *cache = get_coin_cache(coin ? coin : "BTC");
     
     char symbol[32]; sprintf(symbol, "%sUSDT", cache->coin);
@@ -50,11 +54,13 @@ static inline PredictionResult run_prediction(const char *coin) {
     int n = fetch_binance_data(symbol, latest, 2);
 
     if (should_update_cache(cache)) {
+        model_set_pool(cache - caches);
         Model *m = download_model_from_github(cache->coin);
         if (m) cache->model = m;
         if (!cache->model) {
             PredictionResult res = {0}; strcpy(res.coin, cache->coin);
-            strcpy(res.error_msg, "Model download failed"); return res;
+            strcpy(res.error_msg, "Model download failed");
+            pthread_mutex_unlock(&cache_mutex); return res;
         }
 
         if (cache->kline_count == SEQ_LEN + 2 && n == 2 && latest[0].timestamp == cache->klines[SEQ_LEN + 1].timestamp) {
@@ -83,7 +89,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         } else {
             PredictionResult res = {0}; strcpy(res.coin, cache->coin);
             sprintf(res.error_msg, "Insufficient data (%d/%d)", cache->kline_count, SEQ_LEN + 2);
-            return res;
+            pthread_mutex_unlock(&cache_mutex); return res;
         }
     }
 
@@ -96,6 +102,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         res.pred_price = res.last_price * expf(cache->pred_log_diff);
         res.trend = (res.pred_price > res.last_price) ? 1 : 0;
     }
+    pthread_mutex_unlock(&cache_mutex);
     return res;
 }
 

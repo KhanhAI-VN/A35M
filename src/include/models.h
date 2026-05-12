@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 
+#define MAX_CACHED_COINS 5
 #define SEQ_LEN 365
 #define D_MODEL 16
 #define PATCH_LEN 30
@@ -17,17 +18,22 @@ typedef struct { uint32_t version, num_tensors; Tensor *tensors; } Model;
 typedef struct { float mean, stdev; } RevINStats;
 typedef struct { double close; long long timestamp; } Kline;
 
-static uint8_t model_pool[18432];
-static size_t model_off = 0;
+static uint8_t model_pools[MAX_CACHED_COINS][18432];
+static size_t model_offs[MAX_CACHED_COINS] = {0};
+static uint8_t active_pool = 0;
+
+static inline void model_set_pool(uint8_t idx) { active_pool = idx % MAX_CACHED_COINS; }
 
 static inline void* model_alloc(size_t sz) {
-    void *p = model_pool + model_off;
-    return (model_off += (sz + 3) & ~3) <= sizeof(model_pool) ? p : NULL;
+    sz = (sz + 3) & ~3;
+    size_t *offs = model_offs + active_pool;
+    uint8_t *p = model_pools[active_pool] + *offs;
+    return (*offs += sz) <= sizeof(model_pools[0]) ? p : (*offs -= sz, NULL);
 }
 
 static inline Model* load_model(const uint8_t *b, size_t sz) {
     if (sz < 4 || memcmp(b, "A35M", 4)) return NULL;
-    model_off = 0;
+    model_offs[active_pool] = 0;
     Model *m = model_alloc(sizeof(Model));
     const uint8_t *p = b + 8;
     memcpy(&m->num_tensors, p, 4); p += 4;
