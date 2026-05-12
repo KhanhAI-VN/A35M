@@ -9,7 +9,12 @@
 
 #define BINANCE_HOST "api.binance.com"
 
-static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cache_mutex   = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t scratch_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Static scratch buffers — reused every call, never freed, no heap fragmentation. */
+static uint8_t s_model_buf[32768];
+static Kline   s_kline_buf[SEQ_LEN + 2];
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
@@ -76,32 +81,29 @@ static inline PredictionResult run_prediction(const char *coin) {
 
         pthread_mutex_unlock(&cache_mutex);
 
-        uint8_t *m_data = NULL; int m_len = 0;
-        Kline *f_klines = NULL; int f_count = 0;
+        int m_len = 0;
+        int f_count = 0;
 
-        if (need_model) {
-            m_data = malloc(32768);
-            if (m_data) m_len = download_model_from_github(cname, m_data, 32768);
-        }
-        if (!incremental) {
-            f_klines = malloc((SEQ_LEN + 2) * sizeof(Kline));
-            if (f_klines) f_count = fetch_binance_data(symbol, f_klines, SEQ_LEN + 2);
-        }
+        /* Acquire scratch buffers — serialized, no malloc, no fragmentation. */
+        pthread_mutex_lock(&scratch_mutex);
+        if (need_model)
+            m_len = download_model_from_github(cname, s_model_buf, sizeof(s_model_buf));
+        if (!incremental)
+            f_count = fetch_binance_data(symbol, s_kline_buf, SEQ_LEN + 2);
 
+        pthread_mutex_unlock(&scratch_mutex);
         pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
         if (should_update_cache(cache)) {
             if (m_len > 0) {
                 model_set_pool(pool_idx);
-                Model *m = load_model(m_data, m_len);
+                Model *m = load_model(s_model_buf, m_len);
                 if (m) cache->model = m;
             }
             if (!cache->model) {
                 PredictionResult res = {0}; strcpy(res.coin, cache->coin);
                 strcpy(res.error_msg, "Model missing");
                 pthread_mutex_unlock(&cache_mutex);
-                if (m_data) free(m_data);
-                if (f_klines) free(f_klines);
                 return res;
             }
 
@@ -113,7 +115,7 @@ static inline PredictionResult run_prediction(const char *coin) {
                 cache->input[SEQ_LEN - 1] = logf((float)cache->klines[SEQ_LEN].close) - logf((float)cache->klines[SEQ_LEN - 1].close);
             } else if (f_count >= SEQ_LEN + 2) {
                 cache->kline_count = f_count;
-                memcpy(cache->klines, f_klines, f_count * sizeof(Kline));
+                memcpy(cache->klines, s_kline_buf, f_count * sizeof(Kline));
                 for (int i = 0; i < SEQ_LEN; i++)
                     cache->input[i] = logf((float)cache->klines[i+1].close) - logf((float)cache->klines[i].close);
             }
@@ -134,14 +136,10 @@ static inline PredictionResult run_prediction(const char *coin) {
                 PredictionResult res = {0}; strcpy(res.coin, cache->coin);
                 sprintf(res.error_msg, "Data error (%d)", cache->kline_count);
                 pthread_mutex_unlock(&cache_mutex);
-                if (m_data) free(m_data);
-                if (f_klines) free(f_klines);
                 return res;
             }
 
         }
-        if (m_data) free(m_data);
-        if (f_klines) free(f_klines);
     }
 
     PredictionResult res = cache->last_res;
