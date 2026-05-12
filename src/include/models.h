@@ -34,18 +34,20 @@ static inline void* model_alloc(size_t sz) {
 static inline Model* load_model(const uint8_t *b, size_t sz) {
     if (sz < 4 || memcmp(b, "A35M", 4)) return NULL;
     model_offs[active_pool] = 0;
-    Model *m = model_alloc(sizeof(Model));
+#define _ALLOC(ptr, n) do { if (!((ptr) = model_alloc(n))) { model_offs[active_pool] = 0; return NULL; } } while(0)
+    Model *m; _ALLOC(m, sizeof(Model));
     const uint8_t *p = b + 8;
     memcpy(&m->num_tensors, p, 4); p += 4;
-    m->tensors = model_alloc(sizeof(Tensor) * m->num_tensors);
+    _ALLOC(m->tensors, sizeof(Tensor) * m->num_tensors);
     for (uint32_t i = 0; i < m->num_tensors; i++) {
         uint16_t nl; memcpy(&nl, p, 2); p += 2;
-        m->tensors[i].name = model_alloc(nl + 1); memcpy(m->tensors[i].name, p, nl); m->tensors[i].name[nl] = 0; p += nl;
+        _ALLOC(m->tensors[i].name, nl + 1); memcpy(m->tensors[i].name, p, nl); m->tensors[i].name[nl] = 0; p += nl;
         m->tensors[i].num_dims = *p++;
-        m->tensors[i].dims = model_alloc(4 * m->tensors[i].num_dims); memcpy(m->tensors[i].dims, p, 4 * m->tensors[i].num_dims); p += 4 * m->tensors[i].num_dims + 1;
+        _ALLOC(m->tensors[i].dims, 4 * m->tensors[i].num_dims); memcpy(m->tensors[i].dims, p, 4 * m->tensors[i].num_dims); p += 4 * m->tensors[i].num_dims + 1;
         memcpy(&m->tensors[i].data_len, p, 4); p += 4;
-        m->tensors[i].data = model_alloc(4 * m->tensors[i].data_len); memcpy(m->tensors[i].data, p, 4 * m->tensors[i].data_len); p += 4 * m->tensors[i].data_len;
+        _ALLOC(m->tensors[i].data, 4 * m->tensors[i].data_len); memcpy(m->tensors[i].data, p, 4 * m->tensors[i].data_len); p += 4 * m->tensors[i].data_len;
     }
+#undef _ALLOC
     return m;
 }
 
