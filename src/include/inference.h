@@ -65,7 +65,6 @@ static inline PredictionResult run_prediction(const char *coin) {
     int count = fetch_binance_data(symbol, klines, SEQ_LEN + 2);
     if (count < SEQ_LEN + 2) {
         sprintf(res.error_msg, "Insufficient data (%d/%d)", count, SEQ_LEN + 2);
-        free_model(model);
         return res;
     }
 
@@ -90,7 +89,6 @@ static inline PredictionResult run_prediction(const char *coin) {
     strftime(res.date, sizeof(res.date), "%Y-%m-%d", gmtime(&pred_ts));
 
     res.success = 1;
-    free_model(model);
     return res;
 }
 

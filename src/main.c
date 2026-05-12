@@ -49,8 +49,8 @@ int main(int argc, char **argv) {
         if (r.success) {
             printf("\n  ASSET       PRICE           PRED     CHANGE\n");
             printf("  ───────────────────────────────────────────\n");
-            printf("  %-10s  $%-13.2f  %-7s  %+.2f%%\n", 
-                   argv[1], r.last_price, r.trend ? "UP" : "DOWN", r.change_pct);
+            printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", 
+                   argv[1], r.last_price, r.trend ? "UP" : "DOWN", r.pred_change_pct, r.change_pct);
             printf("  ───────────────────────────────────────────\n\n");
         }
         return 0;
