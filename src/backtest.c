@@ -11,7 +11,7 @@ typedef struct {
     long long timestamp; 
 } OHLC;
 
-#define N_COINS 8
+#define N_COINS 9
 #define START_CAPITAL 20.0f
 #define TRADE_MARGIN 2.5f
 #define LEVERAGE 10.0f
@@ -47,12 +47,12 @@ int fetch_ohlc(const char *symbol, OHLC *out, int limit) {
 }
 
 int main() {
-    const char *coins[N_COINS] = {"BTC", "ETH", "BNB", "XRP", "SOL", "DOGE", "SHIB", "AVAX"};
-    OHLC data[N_COINS][500];
+    const char *coins[N_COINS] = {"BTC", "ETH", "BNB", "SOL", "DOGE", "SHIB", "AVAX", "LINK", "ADA"};
+    OHLC data[N_COINS][600];
     uint8_t model_bufs[N_COINS][32768];
     Model *models[N_COINS];
     
-    printf("--- Shrimp Unified Backtest (8 Coins - Long Only) ---\n");
+    printf("--- Shrimp Unified Backtest (9 Coins - Long Only) ---\n");
     printf("Leverage: %.0fx | Shared Capital: $%.2f | Margin: $%.2f\n", LEVERAGE, START_CAPITAL, TRADE_MARGIN);
     
     int coin_days[N_COINS];
@@ -60,8 +60,8 @@ int main() {
     
     for (int c = 0; c < N_COINS; c++) {
         char symbol[32]; sprintf(symbol, "%sUSDT", coins[c]);
-        int n = fetch_ohlc(symbol, data[c], 500);
-        if (n < SEQ_LEN + 62) { printf("Error: Not enough data for %s (%d)\n", coins[c], n); return 1; }
+        int n = fetch_ohlc(symbol, data[c], 600);
+        if (n < SEQ_LEN + 180) { printf("Error: Not enough data for %s (%d)\n", coins[c], n); return 1; }
         coin_days[c] = n;
         if (n < min_days) min_days = n;
         
@@ -84,7 +84,7 @@ int main() {
     float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0}, coin_pnl[N_COINS] = {0};
     int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0}, coin_tp[N_COINS] = {0};
 
-    int start_idx = total_days - 62;
+    int start_idx = total_days - 180;
     for (int i = start_idx; i < total_days - 1; i++) {
         for (int c = 0; c < N_COINS; c++) {
             float input[SEQ_LEN];

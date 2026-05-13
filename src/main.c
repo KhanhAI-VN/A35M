@@ -49,10 +49,10 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
 }
 
 int main(int argc, char **argv) {
-    const char *coins[] = {"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "SHIB", "AVAX"};
+    const char *coins[] = {"BTC", "ETH", "SOL", "BNB", "DOGE", "SHIB", "AVAX", "LINK", "ADA"};
     if (argc > 1) {
         printf("\n  ASSET       PRICE           PRED     CHANGE\n  ───────────────────────────────────────────\n");
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 9; i++) {
             if (strcmp(argv[1], "ALL") && strcmp(argv[1], coins[i])) continue;
             PredictionResult r = run_prediction(coins[i]);
             if (r.success) printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", coins[i], r.last_price, r.trend ? "UP" : "DOWN", r.pred_change_pct, r.change_pct);

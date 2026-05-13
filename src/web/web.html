@@ -31,10 +31,11 @@
                 <tr id="row-ETH"><td>ETH</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
                 <tr id="row-SOL"><td>SOL</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
                 <tr id="row-BNB"><td>BNB</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-XRP"><td>XRP</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
                 <tr id="row-DOGE"><td>DOGE</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
                 <tr id="row-SHIB"><td>SHIB</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
                 <tr id="row-AVAX"><td>AVAX</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-LINK"><td>LINK</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-ADA"><td>ADA</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
             </tbody>
         </table>
         
@@ -52,16 +53,17 @@
     </div>
 
     <script>
-        const coins = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'SHIB', 'AVAX'];
+        const coins = ['BTC', 'ETH', 'SOL', 'BNB', 'DOGE', 'SHIB', 'AVAX', 'LINK', 'ADA'];
         const prevData = { 
             BTC: { price: 0, change: 0 }, 
             ETH: { price: 0, change: 0 },
             SOL: { price: 0, change: 0 },
             BNB: { price: 0, change: 0 },
-            XRP: { price: 0, change: 0 },
             DOGE: { price: 0, change: 0 },
             SHIB: { price: 0, change: 0 },
-            AVAX: { price: 0, change: 0 }
+            AVAX: { price: 0, change: 0 },
+            LINK: { price: 0, change: 0 },
+            ADA: { price: 0, change: 0 }
         };
         let lastUpdateTime = Date.now();
 
