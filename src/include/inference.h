@@ -6,6 +6,7 @@
 #include "openSSL.h"
 #include <sys/time.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #define BINANCE_HOST "api.binance.com"
 
@@ -19,12 +20,12 @@ static Kline   s_kline_buf[SEQ_LEN + 2];
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
     if (!c.ssl) return 0;
-    char req[256], buf[8192], *p, *s1, *e1, s[32];
+    char req[256], buf[8193], *p, *s1, *e1;
     int n = 0, len, pos = 0, h = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
     SSL_write(c.ssl, req, strlen(req));
-    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8191 - pos)) > 0) {
-        buf[pos += len] = 0; p = buf;
+    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8192 - pos)) > 0) {
+        pos += len; buf[pos] = 0; p = buf;
         if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
                 if (pos > 8100) { memmove(buf, buf + pos - 8, 8); pos = 8; }
@@ -36,7 +37,15 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
         while (n < limit && (s1 = strstr(p, "["))) {
             if (s1[1] == '[') { p = s1 + 1; continue; }
             if (!(e1 = strstr(s1, "]"))) break;
-            if (sscanf(s1 + 1, "%lld,\"%*[^\"]\",\"%*[^\"]\",\"%*[^\"]\",\"%31[^\"]\"", &out[n].timestamp, s) >= 2) out[n++].close = atof(s);
+            char *ptr = s1 + 1;
+            out[n].timestamp = atoll(ptr);
+            int commas = 0;
+            while(ptr < e1 && commas < 4) { if(*ptr == ',') commas++; ptr++; }
+            if(commas == 4) {
+                while(ptr < e1 && (*ptr == '"' || *ptr == ' ')) ptr++;
+                out[n].close = atof(ptr);
+                n++;
+            }
             p = e1 + 1;
         }
         memmove(buf, p, pos = (buf + pos - p));

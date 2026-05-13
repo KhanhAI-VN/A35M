@@ -20,6 +20,8 @@ typedef struct {
 static HostSession sessions[2] = {{0}};
 static const char *hosts[2] = {"api.binance.com", "raw.githubusercontent.com"};
 static pthread_mutex_t ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t ssl_init_once = PTHREAD_ONCE_INIT;
+static SSL_CTX *ssl_ctx = NULL;
 
 static int new_session_cb(SSL *s, SSL_SESSION *sess) {
     const char *h = SSL_get_servername(s, TLSEXT_NAMETYPE_host_name);
@@ -32,27 +34,31 @@ static int new_session_cb(SSL *s, SSL_SESSION *sess) {
     return 1;
 }
 
+static void init_ssl_library(void) {
+    SSL_library_init();
+    SSL_load_error_strings();
+    ssl_ctx = SSL_CTX_new(TLS_client_method());
+    SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_CLIENT);
+    SSL_CTX_sess_set_new_cb(ssl_ctx, new_session_cb);
+}
+
 static inline void cleanup_ssl_connection(SSLConnection c) {
-    if (c.ssl) SSL_free(c.ssl);
-    if (c.sock >= 0) close(c.sock);
+    if (c.ssl) { SSL_shutdown(c.ssl); SSL_free(c.ssl); }
+    if (c.sock >= 0) close(c.sock); // An toàn vì mặc định giờ là -1
 }
 
 static inline SSLConnection create_ssl_connection(const char *h) {
-    static SSL_CTX *ctx = NULL;
-    if (!ctx) {
-        SSL_library_init(); ctx = SSL_CTX_new(TLS_client_method());
-        SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_CLIENT);
-        SSL_CTX_sess_set_new_cb(ctx, new_session_cb);
-    }
-
+    pthread_once(&ssl_init_once, init_ssl_library);
     int i = strcmp(h, hosts[0]) ? 1 : 0;
 
     for (int retry = 0; retry <= 1; retry++) {
         int s = socket(AF_INET, SOCK_STREAM, 0);
+        if (s < 0) return (SSLConnection){NULL, -1}; // FIX: Không return {0}
+
         struct timeval tv = {5, 0};
         setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-        struct sockaddr_in a = {AF_INET, htons(443)};
+        struct sockaddr_in a = {AF_INET, htons(443), {0}, {0}};
 
         pthread_mutex_lock(&ssl_mutex);
         if (!sessions[i].ip[0] || difftime(time(NULL), sessions[i].ip_t) > 86400) {
@@ -66,7 +72,7 @@ static inline SSLConnection create_ssl_connection(const char *h) {
                 freeaddrinfo(res);
             } else {
                 pthread_mutex_lock(&ssl_mutex);
-                if (!sessions[i].ip[0]) { pthread_mutex_unlock(&ssl_mutex); close(s); return (SSLConnection){0}; }
+                if (!sessions[i].ip[0]) { pthread_mutex_unlock(&ssl_mutex); close(s); return (SSLConnection){NULL, -1}; }
                 pthread_mutex_unlock(&ssl_mutex);
             }
             pthread_mutex_lock(&ssl_mutex);
@@ -81,25 +87,23 @@ static inline SSLConnection create_ssl_connection(const char *h) {
         if (connect(s, (struct sockaddr*)&a, sizeof(a)) < 0) {
             close(s);
             pthread_mutex_lock(&ssl_mutex);
-            sessions[i].ip[0] = 0;  /* invalidate cache, force re-resolve on next attempt */
+            sessions[i].ip[0] = 0;
             pthread_mutex_unlock(&ssl_mutex);
-            continue;  /* retry: re-resolve DNS then reconnect */
+            continue;
         }
 
-        SSL *ssl = SSL_new(ctx);
+        SSL *ssl = SSL_new(ssl_ctx);
         SSL_set_fd(ssl, s);
         SSL_set_tlsext_host_name(ssl, h);
         if (sess) SSL_set_session(ssl, sess);
 
-        int r = SSL_connect(ssl);
-        if (r <= 0) {
+        if (SSL_connect(ssl) <= 0) {
             SSL_free(ssl);
             pthread_mutex_lock(&ssl_mutex);
             if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
             pthread_mutex_unlock(&ssl_mutex);
-            ssl = SSL_new(ctx); SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
-            r = SSL_connect(ssl);
-            if (r <= 0) { SSL_free(ssl); close(s); return (SSLConnection){0}; }
+            ssl = SSL_new(ssl_ctx); SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
+            if (SSL_connect(ssl) <= 0) { SSL_free(ssl); close(s); return (SSLConnection){NULL, -1}; }
         }
 
         if (SSL_session_reused(ssl)) {
@@ -110,10 +114,8 @@ static inline SSLConnection create_ssl_connection(const char *h) {
 
         return (SSLConnection){ssl, s};
     }
-
-    return (SSLConnection){0};
+    return (SSLConnection){NULL, -1};
 }
-
 
 static inline int send_http_request(SSLConnection *c, const char *req, char *res, size_t sz) {
     SSL_write(c->ssl, req, strlen(req));

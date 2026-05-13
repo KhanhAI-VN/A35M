@@ -25,7 +25,7 @@ static uint8_t active_pool = 0;
 static inline void model_set_pool(uint8_t idx) { active_pool = idx % MAX_CACHED_COINS; }
 
 static inline void* model_alloc(size_t sz) {
-    sz = (sz + 3) & ~3;
+    sz = (sz + 7) & ~7;
     size_t *offs = model_offs + active_pool;
     uint8_t *p = model_pools[active_pool] + *offs;
     return (*offs += sz) <= sizeof(model_pools[0]) ? p : (*offs -= sz, NULL);
@@ -63,7 +63,9 @@ static inline Tensor* get_tp(Model *m, const char *pre, const char *post) {
 static inline void revin_norm(float *x, RevINStats *s, Model *m) {
     float sum = 0, sq = 0;
     for (int i = 0; i < SEQ_LEN; i++) { sum += x[i]; sq += x[i] * x[i]; }
-    s->mean = sum / SEQ_LEN; s->stdev = sqrtf(sq / SEQ_LEN - s->mean * s->mean + 1e-5f);
+    s->mean = sum / SEQ_LEN; 
+    float var = sq / SEQ_LEN - s->mean * s->mean;
+    s->stdev = sqrtf((var > 0.0f ? var : 0.0f) + 1e-5f); 
     Tensor *w = get_t(m, "revin_layer_affine_weight"), *b = get_t(m, "revin_layer_affine_bias");
     for (int i = 0; i < SEQ_LEN; i++) x[i] = ((x[i] - s->mean) / s->stdev) * (w ? w->data[0] : 1) + (b ? b->data[0] : 0);
 }
@@ -80,10 +82,7 @@ static inline void series_decomp(float *x, float *res, float *tr) {
     }
 }
 
-// Removed static buffers to ensure thread-safety (Race Condition Fix)
-
 static inline void patch_linear_forward(float *in, Model *m, const char *pre, float *out) {
-    // Stack-allocated buffers (~3.3KB)
     float feat[N_P * D_MODEL]; 
     float avg[D_MODEL] = {0}, hid[D_MODEL];
     Tensor *wc = get_tp(m, pre, "_patch_conv_conv_weight"), *bc = get_tp(m, pre, "_patch_conv_conv_bias");

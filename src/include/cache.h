@@ -4,6 +4,7 @@
 #include "models.h"
 #include <time.h>
 #include <string.h>
+#include <limits.h>
 
 typedef struct {
     char coin[16];
@@ -34,7 +35,7 @@ static CoinCache caches[MAX_CACHED_COINS];
 static int num_cached_coins = 0;
 
 static inline CoinCache* get_coin_cache(const char *coin) {
-    int i, oi = 0, ot = 2e9;
+    int i, oi = 0, ot = INT_MAX;
     for (i = 0; i < num_cached_coins; i++) if (!strcmp(caches[i].coin, coin)) return &caches[i];
     if (num_cached_coins < MAX_CACHED_COINS) i = num_cached_coins++;
     else {
