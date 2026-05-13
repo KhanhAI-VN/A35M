@@ -5,7 +5,7 @@
 #include "include/inference.h"
 
 static char html[8192], css[8192];
-static uint8_t logo[18432];
+static uint8_t logo[32768];
 static size_t logo_sz = 0;
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int code, const char *type) {
@@ -22,9 +22,9 @@ static void load(const char *p, char *b) {
     if (f) { b[fread(b, 1, 8191, f)] = 0; fclose(f); }
 }
 
-static void load_bin(const char *p, uint8_t *b, size_t *sz) {
+static void load_bin(const char *p, uint8_t *b, size_t max_sz, size_t *sz) {
     FILE *f = fopen(p, "rb");
-    if (f) { *sz = fread(b, 1, 32767, f); fclose(f); }
+    if (f) { *sz = fread(b, 1, max_sz, f); fclose(f); }
 }
 
 static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *url, const char *meth, const char *v, const char *data, size_t *s, void **ptr) {
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     }
     load("src/web/web.html", html); 
     load("src/web/web.css", css);
-    load_bin("src/web/logo.png", logo, &logo_sz);
+    load_bin("src/web/logo.png", logo, sizeof(logo), &logo_sz);
 
     struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, 8080, 0, 0, &handler, 0, MHD_OPTION_END);
     if (!d) return 1;

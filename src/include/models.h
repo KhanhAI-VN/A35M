@@ -80,10 +80,12 @@ static inline void series_decomp(float *x, float *res, float *tr) {
     }
 }
 
-static float _feat[N_P * D_MODEL];
+// Removed static buffers to ensure thread-safety (Race Condition Fix)
 
 static inline void patch_linear_forward(float *in, Model *m, const char *pre, float *out) {
-    float *feat = _feat, avg[D_MODEL] = {0}, hid[D_MODEL];
+    // Stack-allocated buffers (~3.3KB)
+    float feat[N_P * D_MODEL]; 
+    float avg[D_MODEL] = {0}, hid[D_MODEL];
     Tensor *wc = get_tp(m, pre, "_patch_conv_conv_weight"), *bc = get_tp(m, pre, "_patch_conv_conv_bias");
     if (!wc || !bc) return;
 
@@ -106,12 +108,12 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
     for (int i = 0; i < (int)w1->dims[0]; i++) { 
         hid[i] = b1->data[i]; 
         for (int j = 0; j < D_MODEL; j++) hid[i] += avg[j] * w1->data[i * D_MODEL + j]; 
-        if (hid[i] < 0) hid[i] = 0; 
+        if (hid[i] < 0) hid[i] = 0; // ReLU
     }
     for (int i = 0; i < D_MODEL; i++) {
         float sc = b2->data[i]; 
         for (int j = 0; j < (int)w1->dims[0]; j++) sc += hid[j] * w2->data[i * w1->dims[0] + j];
-        sc = 1 / (1 + expf(-sc)); 
+        sc = 1 / (1 + expf(-sc)); // Sigmoid
         for (int p = 0; p < N_P; p++) feat[i * N_P + p] *= sc;
     }
     Tensor *wh = get_tp(m, pre, "_head_linear_weight"), *bh = get_tp(m, pre, "_head_linear_bias");
@@ -120,12 +122,15 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
     for (int i = 0; i < D_MODEL * N_P; i++) out[0] += feat[i] * wh->data[i];
 }
 
-static float _x[SEQ_LEN], _res[SEQ_LEN], _tr[SEQ_LEN];
-
 static inline float predict(Model *m, float *in) {
-    float *x = _x, *res = _res, *tr = _tr, ro[1], to[1]; RevINStats s;
-    memcpy(x, in, SEQ_LEN * 4); revin_norm(x, &s, m); series_decomp(x, res, tr);
-    patch_linear_forward(res, m, "model_res", ro); patch_linear_forward(tr, m, "model_trend", to);
+    // Stack-allocated buffers (~4.3KB)
+    float x[SEQ_LEN], res[SEQ_LEN], tr[SEQ_LEN]; 
+    float ro[1], to[1]; RevINStats s;
+    memcpy(x, in, SEQ_LEN * 4); 
+    revin_norm(x, &s, m); 
+    series_decomp(x, res, tr);
+    patch_linear_forward(res, m, "model_res", ro); 
+    patch_linear_forward(tr, m, "model_trend", to);
     return revin_denorm(ro[0] + to[0], &s, m);
 }
 

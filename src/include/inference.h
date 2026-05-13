@@ -19,31 +19,27 @@ static Kline   s_kline_buf[SEQ_LEN + 2];
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
     if (!c.ssl) return 0;
-    char req[512], buf[8192], *p, *start, *end;
-    sprintf(req, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
+    char req[256], buf[8192], *p, *s1, *e1, s[32];
+    int n = 0, len, pos = 0, h = 0;
+    snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
     SSL_write(c.ssl, req, strlen(req));
-
-    int n = 0, len, pos = 0, head = 0;
-    while (n < limit && (len = SSL_read(c.ssl, buf + pos, sizeof(buf) - pos - 1)) > 0) {
+    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8191 - pos)) > 0) {
         buf[pos += len] = 0; p = buf;
-        if (!head) {
+        if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
-                if (pos > (int)sizeof(buf) - 512) { memmove(buf, buf + pos - 4, 4); pos = 4; }
+                if (pos > 8100) { memmove(buf, buf + pos - 8, 8); pos = 8; }
                 continue;
             }
-            char *status = strstr(buf, " ");
-            if (!status || atoi(status + 1) != 200) { cleanup_ssl_connection(c); return 0; }
-            p += 4; head = 1;
+            if (!(s1 = strstr(buf, " ")) || atoi(s1 + 1) != 200) { cleanup_ssl_connection(c); return 0; }
+            p += 4; h = 1;
         }
-        while (n < limit && (start = strstr(p, "["))) {
-            if (start[1] == '[') { p = start + 1; continue; }
-            if (!(end = strstr(start, "]"))) break;
-            char s[32];
-            if (sscanf(start + 1, "%lld,\"%*[^\"]\",\"%*[^\"]\",\"%*[^\"]\",\"%[^\"]\"", &out[n].timestamp, s) >= 2)
-                out[n++].close = atof(s);
-            p = end + 1;
+        while (n < limit && (s1 = strstr(p, "["))) {
+            if (s1[1] == '[') { p = s1 + 1; continue; }
+            if (!(e1 = strstr(s1, "]"))) break;
+            if (sscanf(s1 + 1, "%lld,\"%*[^\"]\",\"%*[^\"]\",\"%*[^\"]\",\"%31[^\"]\"", &out[n].timestamp, s) >= 2) out[n++].close = atof(s);
+            p = e1 + 1;
         }
-        pos = buf + pos - p; memmove(buf, p, pos);
+        memmove(buf, p, pos = (buf + pos - p));
     }
     cleanup_ssl_connection(c);
     return n;
@@ -52,25 +48,23 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
 static inline int download_model_from_github(const char *coin, uint8_t *out, int sz) {
     SSLConnection c = create_ssl_connection("raw.githubusercontent.com");
     if (!c.ssl) return 0;
-    char req[512], *b;
-    sprintf(req, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
+    char req[256], *b, *p;
+    int n = 0, r, h = 0;
+    snprintf(req, 256, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
     SSL_write(c.ssl, req, strlen(req));
-    int n = 0, r;
-    while (n < sz - 1 && (r = SSL_read(c.ssl, out + n, sz - 1 - n)) > 0) n += r;
-    out[n] = 0;
-    cleanup_ssl_connection(c);
-    if ((b = strstr((char*)out, "\r\n\r\n"))) {
-        char *status = strstr((char*)out, " ");
-        if (!status || atoi(status + 1) != 200) return 0;
-        char *cl = strcasestr((char*)out, "Content-Length:");
-        int expected = cl ? atoi(cl + 15) : 0;
-        int h = b + 4 - (char*)out;
-        int body_len = n - h;
-        if (expected > 0 && body_len < expected) return 0;
-        memmove(out, b + 4, body_len);
-        return body_len;
+    while (n < sz - 1 && (r = SSL_read(c.ssl, out + n, sz - 1 - n)) > 0) {
+        n += r; out[n] = 0;
+        if (!h && (b = strstr((char*)out, "\r\n\r\n"))) {
+            if (!(p = strstr((char*)out, " ")) || atoi(p + 1) != 200) break;
+            char *cl = strcasestr((char*)out, "Content-Length:");
+            h = (b + 4) - (char*)out;
+            if (cl && (n - h) >= atoi(cl + 15)) break;
+        }
     }
-    return 0;
+    cleanup_ssl_connection(c);
+    if (!h) return 0;
+    memmove(out, out + h, n - h);
+    return n - h;
 }
 
 static inline PredictionResult run_prediction(const char *coin) {
