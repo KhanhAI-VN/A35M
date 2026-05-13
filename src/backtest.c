@@ -80,7 +80,7 @@ int main() {
     
     float capital = START_CAPITAL;
     int pos[N_COINS] = {0}; 
-    float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0};
+    float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0}, coin_pnl[N_COINS] = {0};
     int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0};
 
     int start_idx = total_days - 31;
@@ -97,7 +97,7 @@ int main() {
             OHLC today = data[c][i+1];
             if (pos[c] == 1 && trend == 0) {
                 float pnl = (today.open - entry[c]) / entry[c] * entry_notional[c];
-                capital += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
+                capital += pnl; coin_pnl[c] += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
                 pos[c] = 0;
             }
             if (pos[c] == 0 && trend == 1) {
@@ -107,7 +107,8 @@ int main() {
                 pos[c] = 1; entry[c] = today.open; entry_notional[c] = current_notional;
             }
             if (pos[c] == 1 && today.low <= entry[c] * (1.0f - SL_PCT)) {
-                capital -= entry_notional[c] * SL_PCT;
+                float loss = entry_notional[c] * SL_PCT;
+                capital -= loss; coin_pnl[c] -= loss;
                 coin_sl[c]++; coin_trades[c]++; pos[c] = 0;
             }
         }
@@ -117,7 +118,7 @@ int main() {
     for (int c = 0; c < N_COINS; c++) {
         if (pos[c] == 1 && capital > 0) {
             float pnl = (data[c][total_days-1].close - entry[c]) / entry[c] * entry_notional[c];
-            capital += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
+            capital += pnl; coin_pnl[c] += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
         }
     }
 
@@ -128,7 +129,7 @@ int main() {
     int total_t = 0, total_w = 0, total_s = 0;
     for (int c = 0; c < N_COINS; c++) {
         float wr = coin_trades[c] > 0 ? (float)coin_wins[c]/coin_trades[c]*100 : 0;
-        printf("  %-5s  %4d  %4d  %2d   %5.1f%%   \n", coins[c], coin_trades[c], coin_wins[c], coin_sl[c], wr);
+        printf("  %-5s  %4d  %4d  %2d   %5.1f%%   $%+6.2f\n", coins[c], coin_trades[c], coin_wins[c], coin_sl[c], wr, coin_pnl[c]);
         total_t += coin_trades[c]; total_w += coin_wins[c]; total_s += coin_sl[c];
     }
     printf("-----------------------------------------------------------\n");
