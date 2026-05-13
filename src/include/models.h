@@ -5,7 +5,7 @@
 #include <string.h>
 #include <math.h>
 
-#define MAX_CACHED_COINS 5
+#define MAX_CACHED_COINS 10
 #define SEQ_LEN 365
 #define D_MODEL 16
 #define PATCH_LEN 30
@@ -18,7 +18,7 @@ typedef struct { uint32_t version, num_tensors; Tensor *tensors; } Model;
 typedef struct { float mean, stdev; } RevINStats;
 typedef struct { double close; long long timestamp; } Kline;
 
-static uint8_t model_pools[MAX_CACHED_COINS][18432];
+static uint8_t model_pools[MAX_CACHED_COINS][32768];
 static size_t model_offs[MAX_CACHED_COINS] = {0};
 static uint8_t active_pool = 0;
 
