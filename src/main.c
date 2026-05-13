@@ -5,7 +5,7 @@
 #include "include/inference.h"
 
 static char html[8192], css[8192];
-static uint8_t logo[32768];
+static uint8_t logo[18432];
 static size_t logo_sz = 0;
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int code, const char *type) {
