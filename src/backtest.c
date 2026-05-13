@@ -15,7 +15,7 @@ typedef struct {
 #define START_CAPITAL 20.0f
 #define TRADE_MARGIN 2.5f
 #define LEVERAGE 10.0f
-#define SL_PCT 0.01f
+#define SL_PCT 0.02f
 
 int fetch_ohlc(const char *symbol, OHLC *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
@@ -59,8 +59,8 @@ int main() {
     
     for (int c = 0; c < N_COINS; c++) {
         char symbol[32]; sprintf(symbol, "%sUSDT", coins[c]);
-        int n = fetch_ohlc(symbol, data[c], 400);
-        if (n < SEQ_LEN + 31) { printf("Error: Not enough data for %s (%d)\n", coins[c], n); return 1; }
+        int n = fetch_ohlc(symbol, data[c], 500);
+        if (n < SEQ_LEN + 62) { printf("Error: Not enough data for %s (%d)\n", coins[c], n); return 1; }
         coin_days[c] = n;
         if (n < min_days) min_days = n;
         
@@ -83,7 +83,7 @@ int main() {
     float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0}, coin_pnl[N_COINS] = {0};
     int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0};
 
-    int start_idx = total_days - 31;
+    int start_idx = total_days - 62;
     for (int i = start_idx; i < total_days - 1; i++) {
         for (int c = 0; c < N_COINS; c++) {
             float input[SEQ_LEN];
@@ -133,7 +133,7 @@ int main() {
         total_t += coin_trades[c]; total_w += coin_wins[c]; total_s += coin_sl[c];
     }
     printf("-----------------------------------------------------------\n");
-    printf("  TOTAL  %4d  %4d  %2d   %5.1f%%   Balance: $%.2f\n", total_t, total_w, total_s, (float)total_w/total_t*100, capital);
+    printf("  TOTAL  %4d  %4d  %2d   %5.1f%%   Balance: $%.2f\n", total_t, total_w, total_s, total_t > 0 ? (float)total_w/total_t*100 : 0, capital);
     printf("-----------------------------------------------------------\n");
     
     return 0;
