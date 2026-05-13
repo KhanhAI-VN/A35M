@@ -7,13 +7,13 @@
 
 // Custom struct for backtesting
 typedef struct { 
-    double open, high, low, close; 
+    double open, high, low, close, volume; 
     long long timestamp; 
 } OHLC;
 
 #define N_COINS 8
 #define START_CAPITAL 20.0f
-#define TRADE_MARGIN 2.0f
+#define TRADE_MARGIN 2.5f
 #define LEVERAGE 10.0f
 #define SL_PCT 0.01f
 
@@ -33,9 +33,9 @@ int fetch_ohlc(const char *symbol, OHLC *out, int limit) {
         while (n < limit && (start = strstr(p, "["))) {
             if (start[1] == '[') { p = start + 1; continue; }
             if (!(end = strstr(start, "]"))) break;
-            char so[32], sh[32], sl[32], sc[32];
-            if (sscanf(start + 1, "%lld,\"%[^\"]\",\"%[^\"]\",\"%[^\"]\",\"%[^\"]\"", &out[n].timestamp, so, sh, sl, sc) >= 5) {
-                out[n].open = atof(so); out[n].high = atof(sh); out[n].low = atof(sl); out[n++].close = atof(sc);
+            char so[32], sh[32], sl[32], sc[32], sv[32];
+            if (sscanf(start + 1, "%lld,\"%[^\"]\",\"%[^\"]\",\"%[^\"]\",\"%[^\"]\",\"%*[^\"]\",%*d,\"%[^\"]\"", &out[n].timestamp, so, sh, sl, sc, sv) >= 6) {
+                out[n].open = atof(so); out[n].high = atof(sh); out[n].low = atof(sl); out[n].close = atof(sc); out[n++].volume = atof(sv);
             }
             p = end + 1;
         }
@@ -54,12 +54,15 @@ int main() {
     printf("--- Shrimp Unified Backtest (8 Coins - Long Only) ---\n");
     printf("Leverage: %.0fx | Shared Capital: $%.2f | Margin: $%.2f\n", LEVERAGE, START_CAPITAL, TRADE_MARGIN);
     
-    int total_days = 0;
+    int coin_days[N_COINS];
+    int min_days = 999;
+    
     for (int c = 0; c < N_COINS; c++) {
         char symbol[32]; sprintf(symbol, "%sUSDT", coins[c]);
         int n = fetch_ohlc(symbol, data[c], 400);
-        if (n < SEQ_LEN + 30) { printf("Error: Not enough data for %s\n", coins[c]); return 1; }
-        total_days = n;
+        if (n < SEQ_LEN + 31) { printf("Error: Not enough data for %s (%d)\n", coins[c], n); return 1; }
+        coin_days[c] = n;
+        if (n < min_days) min_days = n;
         
         int m_len = download_model_from_github(coins[c], model_bufs[c], 32768);
         model_set_pool(c);
@@ -67,11 +70,18 @@ int main() {
         if (!models[c]) { printf("Error: Model load failed for %s\n", coins[c]); return 1; }
     }
     
+    // Synchronize: Ensure all coins end at the same relative time
+    for (int c = 0; c < N_COINS; c++) {
+        if (data[c][coin_days[c]-1].timestamp != data[0][coin_days[0]-1].timestamp) {
+            printf("Warning: Timestamp mismatch for %s. Backtest might be unsynced!\n", coins[c]);
+        }
+    }
+    int total_days = min_days;
+    
     float capital = START_CAPITAL;
     int pos[N_COINS] = {0}; 
-    float entry[N_COINS] = {0};
+    float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0};
     int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0};
-    float notional = TRADE_MARGIN * LEVERAGE;
 
     int start_idx = total_days - 31;
     for (int i = start_idx; i < total_days - 1; i++) {
@@ -86,15 +96,18 @@ int main() {
             
             OHLC today = data[c][i+1];
             if (pos[c] == 1 && trend == 0) {
-                float pnl = (today.open - entry[c]) / entry[c] * notional;
+                float pnl = (today.open - entry[c]) / entry[c] * entry_notional[c];
                 capital += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
                 pos[c] = 0;
             }
             if (pos[c] == 0 && trend == 1) {
-                pos[c] = 1; entry[c] = today.open;
+                float current_margin = capital / N_COINS;
+                float current_notional = current_margin * LEVERAGE;
+                if (current_notional > today.volume * 0.01f) current_notional = today.volume * 0.01f;
+                pos[c] = 1; entry[c] = today.open; entry_notional[c] = current_notional;
             }
             if (pos[c] == 1 && today.low <= entry[c] * (1.0f - SL_PCT)) {
-                capital -= notional * SL_PCT;
+                capital -= entry_notional[c] * SL_PCT;
                 coin_sl[c]++; coin_trades[c]++; pos[c] = 0;
             }
         }
@@ -103,7 +116,7 @@ int main() {
 
     for (int c = 0; c < N_COINS; c++) {
         if (pos[c] == 1 && capital > 0) {
-            float pnl = (data[c][total_days-1].close - entry[c]) / entry[c] * notional;
+            float pnl = (data[c][total_days-1].close - entry[c]) / entry[c] * entry_notional[c];
             capital += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
         }
     }
