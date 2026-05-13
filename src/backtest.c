@@ -17,6 +17,7 @@ typedef struct {
 #define LEVERAGE 10.0f
 #define SL_PCT 0.02f
 #define TP_PCT 0.02f
+#define FEE_PCT 0.001f
 
 int fetch_ohlc(const char *symbol, OHLC *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
@@ -98,7 +99,9 @@ int main() {
             OHLC today = data[c][i+1];
             if (pos[c] == 1 && trend == 0) {
                 float pnl = (today.open - entry[c]) / entry[c] * entry_notional[c];
-                capital += pnl; coin_pnl[c] += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
+                float fee = entry_notional[c] * FEE_PCT * 2.0f;
+                capital += (pnl - fee); coin_pnl[c] += (pnl - fee); 
+                coin_trades[c]++; if (pnl > fee) coin_wins[c]++;
                 pos[c] = 0;
             }
             if (pos[c] == 0 && trend == 1) {
@@ -109,12 +112,14 @@ int main() {
             }
             if (pos[c] == 1 && today.low <= entry[c] * (1.0f - SL_PCT)) {
                 float loss = entry_notional[c] * SL_PCT;
-                capital -= loss; coin_pnl[c] -= loss;
+                float fee = entry_notional[c] * FEE_PCT * 2.0f;
+                capital -= (loss + fee); coin_pnl[c] -= (loss + fee);
                 coin_sl[c]++; coin_trades[c]++; pos[c] = 0;
             }
             if (pos[c] == 1 && today.high >= entry[c] * (1.0f + TP_PCT)) {
                 float profit = entry_notional[c] * TP_PCT;
-                capital += profit; coin_pnl[c] += profit;
+                float fee = entry_notional[c] * FEE_PCT * 2.0f;
+                capital += (profit - fee); coin_pnl[c] += (profit - fee);
                 coin_tp[c]++; coin_wins[c]++; coin_trades[c]++; pos[c] = 0;
             }
         }
@@ -124,7 +129,9 @@ int main() {
     for (int c = 0; c < N_COINS; c++) {
         if (pos[c] == 1 && capital > 0) {
             float pnl = (data[c][total_days-1].close - entry[c]) / entry[c] * entry_notional[c];
-            capital += pnl; coin_pnl[c] += pnl; coin_trades[c]++; if (pnl > 0) coin_wins[c]++;
+            float fee = entry_notional[c] * FEE_PCT * 2.0f;
+            capital += (pnl - fee); coin_pnl[c] += (pnl - fee); 
+            coin_trades[c]++; if (pnl > fee) coin_wins[c]++;
         }
     }
 
