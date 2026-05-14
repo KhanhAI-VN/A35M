@@ -12,7 +12,7 @@ typedef struct {
     long long timestamp; 
 } OHLC;
 
-#define N_COINS 9
+#define N_COINS 5
 #define START_CAPITAL 20.0f
 #define TRADE_MARGIN 2.5f
 #define LEVERAGE 10.0f
@@ -114,14 +114,14 @@ void resample_to_daily(OHLC *hourly, int n_hours, OHLC *daily_out, int *n_days, 
 }
 
 int main() {
-    const char *coins[N_COINS] = {"BTC", "ETH", "BNB", "SOL", "DOGE", "SHIB", "AVAX", "LINK", "ADA"};
+    const char *coins[N_COINS] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
     static OHLC hourly_data[N_COINS][14000];
     static OHLC daily_data[N_COINS][600];
     int offsets[N_COINS] = {0}; // To store UTC phase sync offsets
     uint8_t model_bufs[N_COINS][32768];
     Model *models[N_COINS];
     
-    printf("--- Shrimp Precise Backtest (9 Coins - 1H Path) ---\n");
+    printf("--- Shrimp Precise Backtest (5 Coins - 1H Path) ---\n");
     printf("Leverage: %.0fx | Shared Capital: $%.2f | Margin: $%.2f\n", LEVERAGE, START_CAPITAL, TRADE_MARGIN);
     
     int min_days = 999;
