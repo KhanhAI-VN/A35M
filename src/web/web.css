@@ -4,12 +4,16 @@
     --bg-color: #0a0c10;
     --text-primary: #ffffff;
     --text-dim: #545d68;
-    --accent: #00ff41; 
+    --accent: #00ff41;
     --glow: rgba(255, 255, 255, 0.05);
     --border: rgba(255, 255, 255, 0.1);
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
 
 body {
     background-color: var(--bg-color);
@@ -28,9 +32,12 @@ body::before {
     content: " ";
     display: block;
     position: absolute;
-    top: 0; left: 0; bottom: 0; right: 0;
-    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
-                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     z-index: 2;
     background-size: 100% 4px, 3px 100%;
     pointer-events: none;
@@ -85,9 +92,17 @@ body::before {
 }
 
 @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.3; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+
+    100% {
+        opacity: 1;
+    }
 }
 
 .terminal-table {
@@ -112,11 +127,39 @@ body::before {
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
-.coin-name { font-weight: 700; color: var(--text-primary); }
-.price-val { color: var(--text-primary); opacity: 0.9; }
-.pred-up { color: var(--accent); }
-.pred-down { color: #ff4757; }
-.change-val { font-size: 12px; }
+.terminal-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.terminal-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.coin-name {
+    font-weight: 700;
+    color: var(--text-dim);
+}
+
+.coin-name span {
+    color: var(--text-primary);
+}
+
+.price-val {
+    color: var(--text-primary);
+    opacity: 0.9;
+}
+
+.pred-up {
+    color: var(--accent);
+}
+
+.pred-down {
+    color: #ff4757;
+}
+
+.change-val {
+    font-size: 12px;
+}
 
 /* Number Roll Animations */
 .animate-container {
@@ -134,27 +177,68 @@ body::before {
     line-height: 1.2em;
 }
 
-.slide-up-out { animation: slideUpOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
-.slide-up-in { animation: slideUpIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
-.slide-down-out { animation: slideDownOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
-.slide-down-in { animation: slideDownIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+.slide-up-out {
+    animation: slideUpOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.slide-up-in {
+    animation: slideUpIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.slide-down-out {
+    animation: slideDownOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.slide-down-in {
+    animation: slideDownIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
 
 @keyframes slideUpIn {
-    0% { transform: translateY(0); opacity: 0; }
-    100% { transform: translateY(-100%); opacity: 1; }
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateY(-100%);
+        opacity: 1;
+    }
 }
+
 @keyframes slideUpOut {
-    0% { transform: translateY(0); opacity: 1; }
-    100% { transform: translateY(-100%); opacity: 0; }
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
 }
 
 @keyframes slideDownIn {
-    0% { transform: translateY(-200%); opacity: 0; }
-    100% { transform: translateY(-100%); opacity: 1; }
+    0% {
+        transform: translateY(-200%);
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateY(-100%);
+        opacity: 1;
+    }
 }
+
 @keyframes slideDownOut {
-    0% { transform: translateY(0); opacity: 1; }
-    100% { transform: translateY(100%); opacity: 0; }
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(100%);
+        opacity: 0;
+    }
 }
 
 .terminal-footer {
@@ -216,4 +300,32 @@ body::before {
     height: 100%;
     background: var(--text-dim);
     transition: width 0.1s linear;
+}
+
+@keyframes flashUp {
+    0% {
+        background-color: rgba(0, 255, 65, 0.2);
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}
+
+@keyframes flashDown {
+    0% {
+        background-color: rgba(255, 71, 87, 0.2);
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}
+
+.flash-up {
+    animation: flashUp 0.8s ease-out;
+}
+
+.flash-down {
+    animation: flashDown 0.8s ease-out;
 }

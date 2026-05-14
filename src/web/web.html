@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="stylesheet" href="web.css">
 </head>
+
 <body>
     <div class="terminal-container">
         <div class="terminal-header">
@@ -16,7 +18,7 @@
             </div>
             <div id="utc-time">UTC: --:--:--</div>
         </div>
-        
+
         <table class="terminal-table">
             <thead>
                 <tr>
@@ -27,18 +29,63 @@
                 </tr>
             </thead>
             <tbody id="table-body">
-                <tr id="row-BTC"><td>BTC</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-ETH"><td>ETH</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-SOL"><td>SOL</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-BNB"><td>BNB</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-DOGE"><td>DOGE</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-SHIB"><td>SHIB</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-AVAX"><td>AVAX</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-LINK"><td>LINK</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
-                <tr id="row-ADA"><td>ADA</td><td class="price">--</td><td class="pred">--</td><td class="change">--</td></tr>
+                <tr id="row-BTC">
+                    <td class="coin-name"><span>BTC</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-ETH">
+                    <td class="coin-name"><span>ETH</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-SOL">
+                    <td class="coin-name"><span>SOL</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-BNB">
+                    <td class="coin-name"><span>BNB</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-DOGE">
+                    <td class="coin-name"><span>DOGE</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-SHIB">
+                    <td class="coin-name"><span>SHIB</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-AVAX">
+                    <td class="coin-name"><span>AVAX</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-LINK">
+                    <td class="coin-name"><span>LINK</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-ADA">
+                    <td class="coin-name"><span>ADA</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
             </tbody>
         </table>
-        
+
         <div class="terminal-footer">
             <div id="cycle-info">- Initializing...</div>
             <div class="status-meta">
@@ -54,8 +101,8 @@
 
     <script>
         const coins = ['BTC', 'ETH', 'SOL', 'BNB', 'DOGE', 'SHIB', 'AVAX', 'LINK', 'ADA'];
-        const prevData = { 
-            BTC: { price: 0, change: 0 }, 
+        const prevData = {
+            BTC: { price: 0, change: 0 },
             ETH: { price: 0, change: 0 },
             SOL: { price: 0, change: 0 },
             BNB: { price: 0, change: 0 },
@@ -107,8 +154,15 @@
                     const predCell = row.querySelector('.pred');
                     const changeCell = row.querySelector('.change');
 
+                    if (data.price !== prevData[coin].price && prevData[coin].price !== 0) {
+                        const flashClass = data.price > prevData[coin].price ? 'flash-up' : 'flash-down';
+                        row.classList.remove('flash-up', 'flash-down');
+                        void row.offsetWidth;
+                        row.classList.add(flashClass);
+                    }
+
                     priceCell.innerHTML = createAnimatedValue(data.price, prevData[coin].price, (v) => `$ ${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-                    
+
                     predCell.innerText = data.trend;
                     predCell.className = `pred ${data.trend === 'UP' ? 'pred-up' : 'pred-down'}`;
 
@@ -117,7 +171,7 @@
 
                     prevData[coin] = { price: data.price, change: data.change };
                 } else {
-                    row.innerHTML = `<td class="coin-name">${coin}</td><td colspan="3" style="color:var(--text-dim)">Node offline</td>`;
+                    row.innerHTML = `<td class="coin-name"><span>${coin}</span></td><td colspan="3" style="color:var(--text-dim)">Node offline</td>`;
                 }
             }
             lastUpdateTime = Date.now();
@@ -128,4 +182,5 @@
         setInterval(update, 5000);
     </script>
 </body>
+
 </html>
