@@ -40,6 +40,8 @@ body::before {
         linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     z-index: 2;
     background-size: 100% 4px, 3px 100%;
+    mix-blend-mode: overlay;
+    opacity: 0.3;
     pointer-events: none;
 }
 
@@ -128,11 +130,12 @@ body::before {
 }
 
 .terminal-table tbody tr {
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .terminal-table tbody tr:hover {
     background-color: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 3px 0 0 var(--text-dim);
 }
 
 .coin-name {
@@ -159,6 +162,12 @@ body::before {
 
 .change-val {
     font-size: 12px;
+}
+
+.price,
+.change {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
 }
 
 /* Number Roll Animations */
@@ -304,7 +313,7 @@ body::before {
 
 @keyframes flashUp {
     0% {
-        background-color: rgba(0, 255, 65, 0.2);
+        background-color: rgba(46, 204, 113, 0.15);
     }
 
     100% {
@@ -314,7 +323,7 @@ body::before {
 
 @keyframes flashDown {
     0% {
-        background-color: rgba(255, 71, 87, 0.2);
+        background-color: rgba(231, 76, 60, 0.15);
     }
 
     100% {
@@ -328,4 +337,16 @@ body::before {
 
 .flash-down {
     animation: flashDown 0.8s ease-out;
+}
+
+body::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle, transparent 60%, rgba(0, 0, 0, 0.7) 120%);
+    pointer-events: none;
+    z-index: 4;
 }

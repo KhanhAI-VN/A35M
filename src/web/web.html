@@ -154,8 +154,8 @@
                     const predCell = row.querySelector('.pred');
                     const changeCell = row.querySelector('.change');
 
-                    if (data.price !== prevData[coin].price && prevData[coin].price !== 0) {
-                        const flashClass = data.price > prevData[coin].price ? 'flash-up' : 'flash-down';
+                    if (data.change !== prevData[coin].change && prevData[coin].change !== 0) {
+                        const flashClass = data.change > prevData[coin].change ? 'flash-up' : 'flash-down';
                         row.classList.remove('flash-up', 'flash-down');
                         void row.offsetWidth;
                         row.classList.add(flashClass);
