@@ -7,6 +7,7 @@
 #include "../../3libs/cJSON.h"
 #include "../../3libs/sds.h"
 #include "../../3libs/log.h"
+#include "../../3libs/stb_sprintf.h"
 #include <sys/time.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -97,7 +98,7 @@ static inline PredictionResult run_prediction(const char *coin) {
             return (PredictionResult){.success = 0, .coin = "", .error_msg = "Invalid symbol"};
         }
     }
-    char symbol[32]; snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
+    char symbol[32]; stbsp_snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
     
     CoinCache *cache = get_coin_cache(cname);
     pthread_mutex_lock(&cache->coin_mutex);
@@ -130,7 +131,7 @@ static inline PredictionResult run_prediction(const char *coin) {
                     m_len, f_count);
                 PredictionResult res = {0};
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
-                snprintf(res.error_msg, sizeof(res.error_msg), "%s", !cache->model ? "Model error" : "Data error");
+                stbsp_snprintf(res.error_msg, sizeof(res.error_msg), "%s", !cache->model ? "Model error" : "Data error");
                 pthread_mutex_unlock(&cache->coin_mutex);
                 free(l_model_buf); free(l_kline_buf);
                 return res;

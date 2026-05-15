@@ -4,6 +4,8 @@
 #include <microhttpd.h>
 #include "include/inference.h"
 #include "../3libs/log.h"
+#define STB_SPRINTF_IMPLEMENTATION
+#include "../3libs/stb_sprintf.h"
 
 static char html[8192], css[8192];
 static uint8_t logo[32768];
@@ -68,7 +70,7 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
         const char *coin = MHD_lookup_connection_value(c, MHD_GET_ARGUMENT_KIND, "coin");
         PredictionResult r = run_prediction(coin ? coin : "BTC");
         char json[256];
-        snprintf(json, 256, "{\"success\":%s,\"price\":%.2f,\"change\":%.2f,\"trend\":\"%s\"}", 
+        stbsp_snprintf(json, 256, "{\"success\":%s,\"price\":%.2f,\"change\":%.2f,\"trend\":\"%s\"}", 
                  r.success ? "true" : "false", r.last_price, r.change_pct, r.trend ? "UP" : "DOWN");
         return send_res(c, json, 200, "application/json");
     }

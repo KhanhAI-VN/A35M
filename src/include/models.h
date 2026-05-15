@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 #include <pthread.h>
+#include "../../3libs/stb_sprintf.h"
 
 #define MAX_CACHED_COINS 10
 #define SEQ_LEN 365
@@ -77,7 +78,7 @@ static inline Tensor* get_t(Model *m, const char *n) {
 }
 
 static inline Tensor* get_tp(Model *m, const char *pre, const char *post) {
-    char n[128]; snprintf(n, sizeof(n), "%s%s", pre, post); return get_t(m, n);
+    char n[128]; stbsp_snprintf(n, sizeof(n), "%s%s", pre, post); return get_t(m, n);
 }
 
 static inline void revin_norm(float *x, RevINStats *s, Model *m) {
