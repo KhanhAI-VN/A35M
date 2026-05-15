@@ -28,7 +28,11 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
         pos += len; buf[pos < 8193 ? pos : 8192] = 0; p = buf;
         if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
-                if (pos > 8000) { memmove(buf, buf + pos - 128, 128); pos = 128; }
+                if (pos > 8000) { 
+                    memmove(buf, buf + pos - 128, 128); 
+                    pos = 128; 
+                    buf[pos] = 0; 
+                }
                 continue;
             }
             char *status = strstr(buf, " ");
@@ -79,7 +83,7 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
         }
     }
     cleanup_ssl_connection(c);
-    if (!h) return 0;
+    if (!h || h >= n) return 0;
     memmove(out, out + h, n - h);
     return n - h;
 }

@@ -38,11 +38,14 @@ static int new_session_cb(SSL *s, SSL_SESSION *sess) {
 }
 
 static void init_ssl_library(void) {
-    SSL_library_init();
-    SSL_load_error_strings();
+    OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
     ssl_ctx = SSL_CTX_new(TLS_client_method());
-    SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_CLIENT);
-    SSL_CTX_sess_set_new_cb(ssl_ctx, new_session_cb);
+    if (ssl_ctx) {
+        SSL_CTX_set_default_verify_paths(ssl_ctx);
+        SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
+        SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_CLIENT);
+        SSL_CTX_sess_set_new_cb(ssl_ctx, new_session_cb);
+    }
 }
 
 static inline void cleanup_ssl_connection(SSLConnection c) {
@@ -120,6 +123,10 @@ static inline SSLConnection create_ssl_connection(const char *h) {
             if (!ssl) { close(s); continue; }
             SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
             if (SSL_connect(ssl) <= 0) { SSL_free(ssl); close(s); continue; }
+        }
+
+        if (SSL_get_verify_result(ssl) != X509_V_OK) {
+            SSL_free(ssl); close(s); return (SSLConnection){NULL, -1};
         }
 
         if (SSL_session_reused(ssl)) {
