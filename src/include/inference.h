@@ -3,7 +3,7 @@
 
 #include "models.h"
 #include "cache.h"
-#include "openSSL.h"
+#include <curl/curl.h>
 #include "../../3libs/cJSON.h"
 #include "../../3libs/sds.h"
 #include "../../3libs/log.h"
@@ -12,30 +12,55 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define BINANCE_HOST "api.binance.com"
-
 // Per-coin mutex is now located inside CoinCache struct
 
+struct BinaryBuffer {
+    uint8_t *data;
+    size_t max_size;
+    size_t current_size;
+};
+
+static size_t curl_write_sds_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    sds *str = (sds *)userp;
+    *str = sdscatlen(*str, contents, realsize);
+    return realsize;
+}
+
+static size_t curl_write_bin_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    struct BinaryBuffer *buf = (struct BinaryBuffer *)userp;
+    if (buf->current_size + realsize > buf->max_size) return 0;
+    memcpy(buf->data + buf->current_size, contents, realsize);
+    buf->current_size += realsize;
+    return realsize;
+}
+
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
-    SSLConnection c = create_ssl_connection(BINANCE_HOST);
-    if (!c.ssl) return 0;
-    char *buf = malloc(131072);
-    if (!buf) { cleanup_ssl_connection(c); return 0; }
-    int n = 0, len, pos = 0;
-    sds req = sdscatprintf(sdsempty(),
-        "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n",
-        symbol, limit, BINANCE_HOST);
-    if (!req) { free(buf); cleanup_ssl_connection(c); return 0; }
-    if (SSL_write(c.ssl, req, (int)sdslen(req)) <= 0) { sdsfree(req); free(buf); cleanup_ssl_connection(c); return 0; }
-    sdsfree(req);
-    while (pos < 131071 && (len = SSL_read(c.ssl, buf + pos, 131071 - pos)) > 0) pos += len;
-    buf[pos] = 0;
-    cleanup_ssl_connection(c);
-    if (pos >= 131071) { free(buf); return 0; }
-    char *body = strstr(buf, "\r\n\r\n");
-    if (!body) { free(buf); return 0; }
-    body += 4;
-    cJSON *root = cJSON_Parse(body);
+    int n = 0;
+    CURL *curl = curl_easy_init();
+    if (!curl) return 0;
+    
+    char url[256];
+    stbsp_snprintf(url, sizeof(url), "https://api.binance.com/api/v3/klines?symbol=%s&interval=1d&limit=%d", symbol, limit);
+    
+    sds response = sdsempty();
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_sds_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "A35M-Engine/1.0");
+    
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    
+    if (res != CURLE_OK || sdslen(response) == 0) {
+        log_error("Binance API fetch failed: %s", curl_easy_strerror(res));
+        sdsfree(response);
+        return 0;
+    }
+    
+    cJSON *root = cJSON_Parse(response);
     if (root) {
         cJSON *item;
         cJSON_ArrayForEach(item, root) {
@@ -50,44 +75,38 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
         }
         cJSON_Delete(root);
     }
-    free(buf);
+    sdsfree(response);
     return n;
 }
 
 static inline int download_model_from_github(const char *coin, uint8_t *out, int sz) {
-    SSLConnection c = create_ssl_connection("raw.githubusercontent.com");
-    if (!c.ssl) return 0;
-    char *b;
-    int n = 0, r, h = 0;
-    sds req = sdscatprintf(sdsempty(),
-        "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n",
-        coin);
-    if (!req) { cleanup_ssl_connection(c); return 0; }
-    if (SSL_write(c.ssl, req, (int)sdslen(req)) <= 0) { sdsfree(req); cleanup_ssl_connection(c); return 0; }
-    sdsfree(req);
-    while (n < sz - 1 && (r = SSL_read(c.ssl, out + n, sz - 1 - n)) > 0) {
-        n += r; out[n] = 0;
-        if (!h && (b = strstr((char*)out, "\r\n\r\n"))) {
-            char *status = strstr((char*)out, " ");
-            if (!status || atoi(status + 1) != 200) { h = -1; break; }
-            char *cl_hdr = strcasestr((char*)out, "Content-Length:");
-            h = (int)((b + 4) - (char*)out);
-            if (cl_hdr && cl_hdr < b) {
-                char *cl_val = strchr(cl_hdr, ':');
-                if (cl_val) {
-                    cl_val++;
-                    while (*cl_val == ' ') cl_val++;
-                    if (*cl_val >= '0' && *cl_val <= '9') {
-                        if (atoi(cl_val) > (sz - h)) { h = -1; break; }
-                    }
-                }
-            }
-        }
+    CURL *curl = curl_easy_init();
+    if (!curl) return 0;
+    
+    char url[256];
+    stbsp_snprintf(url, sizeof(url), "https://raw.githubusercontent.com/KhanhAI-VN/Test/main/%s.bin", coin);
+    
+    struct BinaryBuffer buf = {out, (size_t)sz, 0};
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_bin_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "A35M-Engine/1.0");
+    
+    CURLcode res = curl_easy_perform(curl);
+    
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_cleanup(curl);
+    
+    if (res != CURLE_OK || http_code != 200) {
+        log_error("Failed to download model for %s (curl: %s, http: %ld)", coin, curl_easy_strerror(res), http_code);
+        return 0;
     }
-    cleanup_ssl_connection(c);
-    if (h <= 0 || h >= n) return 0;
-    memmove(out, out + h, n - h);
-    return n - h;
+    
+    return (int)buf.current_size;
 }
 
 static inline PredictionResult run_prediction(const char *coin) {
@@ -187,27 +206,47 @@ static inline PredictionResult run_prediction(const char *coin) {
 }
 
 static inline void trigger_github_retrain(const char *token) {
-    SSLConnection c = create_ssl_connection("api.github.com");
-    if (!c.ssl) return;
-    char res[1024];
+    CURL *curl = curl_easy_init();
+    if (!curl) return;
+    
+    const char *url = "https://api.github.com/repos/KhanhAI-VN/Test/actions/workflows/retrain.yml/dispatches";
     const char *body = "{\"ref\":\"main\"}";
-    /* Use SDS to build request — token can be any length, no overflow risk */
-    sds req = sdscatprintf(sdsempty(),
-        "POST /repos/KhanhAI-VN/Test/actions/workflows/retrain.yml/dispatches HTTP/1.1\r\n"
-        "Host: api.github.com\r\n"
-        "Accept: application/vnd.github+json\r\n"
-        "Authorization: Bearer %s\r\n"
-        "X-GitHub-Api-Version: 2022-11-28\r\n"
-        "User-Agent: Luckfox-Pico\r\n"
-        "Content-Type: application/json\r\n"
-        "Content-Length: %zu\r\n"
-        "Connection: close\r\n\r\n"
-        "%s", token, strlen(body), body);
-    if (req) {
-        send_http_request(&c, req, res, sizeof(res));
-        sdsfree(req);
+    
+    struct curl_slist *headers = NULL;
+    char auth_header[256];
+    stbsp_snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", token);
+    
+    headers = curl_slist_append(headers, "Accept: application/vnd.github+json");
+    headers = curl_slist_append(headers, auth_header);
+    headers = curl_slist_append(headers, "X-GitHub-Api-Version: 2022-11-28");
+    headers = curl_slist_append(headers, "User-Agent: Luckfox-Pico");
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    
+    sds response = sdsempty();
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_sds_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        log_error("trigger_github_retrain failed: %s", curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        if (http_code >= 200 && http_code < 300) {
+            log_info("Retrain triggered successfully (HTTP %ld)", http_code);
+        } else {
+            log_error("Retrain failed with HTTP %ld: %s", http_code, response);
+        }
     }
-    cleanup_ssl_connection(c);
+    
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    sdsfree(response);
 }
 
 #endif

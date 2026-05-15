@@ -4,6 +4,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdint.h>
+#define STB_SPRINTF_IMPLEMENTATION
 #include "include/inference.h"
 
 // Custom struct for backtesting
@@ -23,53 +24,64 @@ int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit, const char *inter
     int total_fetched = 0;
     long long last_ts = 0;
 
-    while (total_fetched < limit) {
-        SSLConnection c = create_ssl_connection(BINANCE_HOST);
-        if (!c.ssl) break;
+    CURL *curl = curl_easy_init();
+    if (!curl) return 0;
 
+    while (total_fetched < limit) {
         int page_limit = (limit - total_fetched > 1000) ? 1000 : (limit - total_fetched);
-        char req[512], buf[16384], *p, *start, *end;
+        char url[512];
         
         if (last_ts == 0) {
-            sprintf(req, "GET /api/v3/klines?symbol=%s&interval=%s&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", 
-                    symbol, interval, page_limit, BINANCE_HOST);
+            stbsp_snprintf(url, sizeof(url), "https://api.binance.com/api/v3/klines?symbol=%s&interval=%s&limit=%d", 
+                    symbol, interval, page_limit);
         } else {
-            sprintf(req, "GET /api/v3/klines?symbol=%s&interval=%s&limit=%d&endTime=%lld HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", 
-                    symbol, interval, page_limit, last_ts - 1, BINANCE_HOST);
+            stbsp_snprintf(url, sizeof(url), "https://api.binance.com/api/v3/klines?symbol=%s&interval=%s&limit=%d&endTime=%lld", 
+                    symbol, interval, page_limit, last_ts - 1);
         }
 
-        SSL_write(c.ssl, req, strlen(req));
-        int n_page = 0, len, pos = 0, head = 0;
+        sds response = sdsempty();
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_sds_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "A35M-Engine/1.0");
+
+        CURLcode res = curl_easy_perform(curl);
+        if (res != CURLE_OK || sdslen(response) == 0) {
+            log_error("Backtest fetch failed: %s", curl_easy_strerror(res));
+            sdsfree(response);
+            break;
+        }
+
+        cJSON *root = cJSON_Parse(response);
+        sdsfree(response);
+
+        if (!root) break;
+        
+        int n_page = 0;
         OHLC page_data[1000];
-
-        while (n_page < page_limit && (len = SSL_read(c.ssl, buf + pos, sizeof(buf) - pos - 1)) > 0) {
-            buf[pos += len] = 0; p = buf;
-            if (!head) {
-                if (!(p = strstr(buf, "\r\n\r\n"))) {
-                    // [FIX BUG] Prevent buffer overflow if headers are too large
-                    if (pos > (int)sizeof(buf) - 512) { memmove(buf, buf + pos - 4, 4); pos = 4; }
-                    continue;
-                }
-                p += 4; head = 1;
+        
+        cJSON *item;
+        cJSON_ArrayForEach(item, root) {
+            if (n_page >= page_limit) break;
+            cJSON *ts = cJSON_GetArrayItem(item, 0);
+            cJSON *so = cJSON_GetArrayItem(item, 1);
+            cJSON *sh = cJSON_GetArrayItem(item, 2);
+            cJSON *sl = cJSON_GetArrayItem(item, 3);
+            cJSON *sc = cJSON_GetArrayItem(item, 4);
+            cJSON *sv = cJSON_GetArrayItem(item, 5);
+            
+            if (ts && so && sh && sl && sc && sv && sc->valuestring) {
+                page_data[n_page].timestamp = (long long)ts->valuedouble;
+                page_data[n_page].open = atof(so->valuestring);
+                page_data[n_page].high = atof(sh->valuestring);
+                page_data[n_page].low = atof(sl->valuestring);
+                page_data[n_page].close = atof(sc->valuestring);
+                page_data[n_page].volume = atof(sv->valuestring);
+                n_page++;
             }
-            while (n_page < page_limit && (start = strstr(p, "["))) {
-                if (start[1] == '[') { p = start + 1; continue; }
-                if (!(end = strstr(start, "]"))) break;
-                
-                char so[32], sh[32], sl[32], sc[32], sv[32];
-                if (sscanf(start + 1, " %lld , \"%[^\"]\" , \"%[^\"]\" , \"%[^\"]\" , \"%[^\"]\" , \"%[^\"]\"", 
-                           &page_data[n_page].timestamp, so, sh, sl, sc, sv) >= 6) {
-                    page_data[n_page].open = atof(so); 
-                    page_data[n_page].high = atof(sh); 
-                    page_data[n_page].low = atof(sl); 
-                    page_data[n_page].close = atof(sc); 
-                    page_data[n_page++].volume = atof(sv);
-                }
-                p = end + 1;
-            }
-            pos = buf + pos - p; memmove(buf, p, pos);
         }
-        cleanup_ssl_connection(c);
+        cJSON_Delete(root);
 
         if (n_page == 0) break;
 
@@ -80,6 +92,7 @@ int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit, const char *inter
         last_ts = page_data[0].timestamp; 
         if (n_page < page_limit) break; 
     }
+    curl_easy_cleanup(curl);
     return total_fetched;
 }
 
