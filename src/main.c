@@ -83,15 +83,29 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
     return buf[0] ? send_res(c, buf, 200, is_css ? "text/css" : "text/html") : send_res(c, "404", 404, "text/plain");
 }
 
+static void* prediction_wrapper(void *arg) {
+    run_prediction((const char*)arg);
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     const char *coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
     load_env();
     if (argc > 1) {
         printf("\n  ASSET       PRICE           PRED     CHANGE\n  ───────────────────────────────────────────\n");
-        for (int i = 0; i < 5; i++) {
-            if (strcmp(argv[1], "ALL") && strcmp(argv[1], coins[i])) continue;
-            PredictionResult r = run_prediction(coins[i]);
-            if (r.success) printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", coins[i], r.last_price, r.trend ? "UP" : "DOWN", r.pred_change_pct, r.change_pct);
+        if (!strcmp(argv[1], "ALL")) {
+            pthread_t tids[5];
+            for (int i = 0; i < 5; i++) {
+                pthread_create(&tids[i], NULL, prediction_wrapper, (void*)coins[i]);
+            }
+            for (int i = 0; i < 5; i++) {
+                pthread_join(tids[i], NULL);
+                PredictionResult pr = run_prediction(coins[i]);
+                if (pr.success) printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", coins[i], pr.last_price, pr.trend ? "UP" : "DOWN", pr.pred_change_pct, pr.change_pct);
+            }
+        } else {
+            PredictionResult r = run_prediction(argv[1]);
+            if (r.success) printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", argv[1], r.last_price, r.trend ? "UP" : "DOWN", r.pred_change_pct, r.change_pct);
         }
         printf("  ───────────────────────────────────────────\n\n");
         return 0;

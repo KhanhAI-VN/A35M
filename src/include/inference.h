@@ -12,11 +12,6 @@
 #define BINANCE_HOST "api.binance.com"
 
 static pthread_mutex_t cache_mutex   = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t scratch_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-/* Static scratch buffers — reused every call, never freed, no heap fragmentation. */
-static uint8_t s_model_buf[49152];
-static Kline   s_kline_buf[SEQ_LEN + 2];
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
@@ -92,34 +87,40 @@ static inline PredictionResult run_prediction(const char *coin) {
     if (should_update_cache(cache)) {
         pthread_mutex_unlock(&cache_mutex);
         
-        pthread_mutex_lock(&scratch_mutex);
-        int m_len = download_model_from_github(cname, s_model_buf, sizeof(s_model_buf));
-        int f_count = fetch_binance_data(symbol, s_kline_buf, SEQ_LEN + 2);
+        // Allocate local buffers for downloading data to avoid shared-state bottlenecks
+        uint8_t *l_model_buf = malloc(49152);
+        Kline *l_kline_buf = malloc((SEQ_LEN + 2) * sizeof(Kline));
+        if (!l_model_buf || !l_kline_buf) {
+            free(l_model_buf); free(l_kline_buf);
+            return (PredictionResult){.success = 0, .coin = "", .error_msg = "Memory error"};
+        }
+
+        int m_len = download_model_from_github(cname, l_model_buf, 49152);
+        int f_count = fetch_binance_data(symbol, l_kline_buf, SEQ_LEN + 2);
         
         pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
         if (should_update_cache(cache)) {
             uint8_t pool_idx = (uint8_t)(cache - caches);
-            if (m_len > 0) cache->model = load_model(pool_idx, s_model_buf, m_len);
+            if (m_len > 0) cache->model = load_model(pool_idx, l_model_buf, m_len);
             
             if (!cache->model || f_count < SEQ_LEN + 2) {
                 PredictionResult res = {0};
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
                 snprintf(res.error_msg, sizeof(res.error_msg), "%s", !cache->model ? "Model error" : "Data error");
-                pthread_mutex_unlock(&scratch_mutex);
                 pthread_mutex_unlock(&cache_mutex);
+                free(l_model_buf); free(l_kline_buf);
                 return res;
             }
 
             cache->kline_count = f_count;
-            memcpy(cache->klines, s_kline_buf, f_count * sizeof(Kline));
+            memcpy(cache->klines, l_kline_buf, f_count * sizeof(Kline));
             for (int i = 0; i < SEQ_LEN; i++) {
                 float c1 = (float)cache->klines[i].close, c2 = (float)cache->klines[i+1].close;
                 cache->input[i] = (c1 > 1e-9f && c2 > 1e-9f) ? logf(c2 / c1) : 0;
             }
             
             update_cache_day(cache);
-            pthread_mutex_unlock(&scratch_mutex);
 
             float local_input[SEQ_LEN];
             memcpy(local_input, cache->input, sizeof(local_input));
@@ -139,9 +140,8 @@ static inline PredictionResult run_prediction(const char *coin) {
             time_t pred_ts = (cache->klines[cache->kline_count-1].timestamp) / 1000 + 86400;
             struct tm t_pred; gmtime_r(&pred_ts, &t_pred);
             strftime(cache->last_res.date, sizeof(cache->last_res.date), "%Y-%m-%d", &t_pred);
-        } else {
-            pthread_mutex_unlock(&scratch_mutex);
         }
+        free(l_model_buf); free(l_kline_buf);
     }
 
     // Secondary fetch only if needed for current price update (not full sync)
