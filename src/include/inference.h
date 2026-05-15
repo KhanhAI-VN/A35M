@@ -24,14 +24,15 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
     int n = 0, len, pos = 0, h = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
     SSL_write(c.ssl, req, strlen(req));
-    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8191 - pos)) > 0) {
+    while (n < limit && pos < 8191 && (len = SSL_read(c.ssl, buf + pos, 8191 - pos)) > 0) {
         pos += len; buf[pos] = 0; p = buf;
         if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
-                if (pos > 8100) { memmove(buf, buf + pos - 8, 8); pos = 8; }
+                if (pos > 8000) { memmove(buf, buf + pos - 8, 8); pos = 8; }
                 continue;
             }
-            if (!(s1 = strstr(buf, " ")) || atoi(s1 + 1) != 200) { cleanup_ssl_connection(c); return 0; }
+            char *status = strstr(buf, " ");
+            if (!status || atoi(status + 1) != 200) { cleanup_ssl_connection(c); return 0; }
             p += 4; h = 1;
         }
         while (n < limit && (s1 = strstr(p, "["))) {
@@ -40,15 +41,18 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
             char *ptr = s1 + 1;
             out[n].timestamp = atoll(ptr);
             int commas = 0;
-            while(ptr < e1 && commas < 4) { if(*ptr == ',') commas++; ptr++; }
+            char *comma_ptr = s1 + 1;
+            while(comma_ptr < e1 && commas < 4) { if(*comma_ptr == ',') commas++; comma_ptr++; }
             if(commas == 4) {
-                while(ptr < e1 && (*ptr == '"' || *ptr == ' ')) ptr++;
-                out[n].close = atof(ptr);
+                while(comma_ptr < e1 && (*comma_ptr == '"' || *comma_ptr == ' ' || *comma_ptr == ',')) comma_ptr++;
+                out[n].close = atof(comma_ptr);
                 n++;
             }
             p = e1 + 1;
         }
-        memmove(buf, p, pos = (buf + pos - p));
+        int remaining = (int)(buf + pos - p);
+        if (remaining > 0) memmove(buf, p, remaining);
+        pos = remaining;
     }
     cleanup_ssl_connection(c);
     return n;
@@ -57,17 +61,21 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
 static inline int download_model_from_github(const char *coin, uint8_t *out, int sz) {
     SSLConnection c = create_ssl_connection("raw.githubusercontent.com");
     if (!c.ssl) return 0;
-    char req[256], *b, *p;
+    char req[256], *b;
     int n = 0, r, h = 0;
     snprintf(req, 256, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
     SSL_write(c.ssl, req, strlen(req));
     while (n < sz - 1 && (r = SSL_read(c.ssl, out + n, sz - 1 - n)) > 0) {
         n += r; out[n] = 0;
         if (!h && (b = strstr((char*)out, "\r\n\r\n"))) {
-            if (!(p = strstr((char*)out, " ")) || atoi(p + 1) != 200) break;
+            char *status = strstr((char*)out, " ");
+            if (!status || atoi(status + 1) != 200) break;
             char *cl = strcasestr((char*)out, "Content-Length:");
-            h = (b + 4) - (char*)out;
-            if (cl && (n - h) >= atoi(cl + 15)) break;
+            h = (int)((b + 4) - (char*)out);
+            if (cl) {
+                int expected = atoi(cl + 15);
+                if (expected > 0 && (n - h) >= expected) break;
+            }
         }
     }
     cleanup_ssl_connection(c);

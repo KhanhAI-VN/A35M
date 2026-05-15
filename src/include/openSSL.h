@@ -130,10 +130,11 @@ static inline int send_http_request(SSLConnection *c, const char *req, char *res
     if (!c->ssl) return -1;
     int r = SSL_write(c->ssl, req, (int)strlen(req));
     if (r <= 0) return -1;
-    int t = 0, n;
-    while (t < (int)sz - 1 && (n = SSL_read(c->ssl, res + t, (int)(sz - 1 - t))) > 0) t += n;
-    if (t >= 0) res[t] = 0;
-    return t;
+    size_t t = 0;
+    int n;
+    while (t < sz - 1 && (n = SSL_read(c->ssl, res + t, (int)(sz - 1 - t))) > 0) t += (size_t)n;
+    res[t] = 0;
+    return (int)t;
 }
 
 #endif
