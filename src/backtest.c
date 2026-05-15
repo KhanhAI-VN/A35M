@@ -140,6 +140,8 @@ int main() {
     }
     
     float capital = START_CAPITAL;
+    float peak_capital = START_CAPITAL;
+    float max_dd = 0.0f;
     int pos[N_COINS] = {0}; 
     float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0}, coin_pnl[N_COINS] = {0};
     int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0};
@@ -200,8 +202,24 @@ int main() {
             }
         }
 
-
+        // Calculate daily portfolio value for Max Drawdown
+        float daily_portfolio_value = capital;
+        for (int c = 0; c < N_COINS; c++) {
+            if (pos[c] == 1) {
+                float current_price = daily_data[c][d].close;
+                float pnl = (current_price - entry[c]) / entry[c] * entry_notional[c];
+                float fee = entry_notional[c] * FEE_PCT * 2.0f;
+                daily_portfolio_value += (pnl - fee);
+            }
+        }
         
+        if (daily_portfolio_value > peak_capital) {
+            peak_capital = daily_portfolio_value;
+        }
+        
+        float dd = (peak_capital > 0) ? (peak_capital - daily_portfolio_value) / peak_capital * 100.0f : 0;
+        if (dd > max_dd) max_dd = dd;
+
         if (capital <= 0) { printf("BANKRUPT at day %d\n", d); break; }
     }
 
@@ -225,7 +243,7 @@ int main() {
         total_t += coin_trades[c]; total_w += coin_wins[c];
     }
     printf("-----------------------------------------------------------\n");
-    printf("  TOTAL  %4d  %4d   %5.1f%%   Balance: $%.2f\n", total_t, total_w, total_t > 0 ? (float)total_w/total_t*100 : 0, capital);
+    printf("  TOTAL  %4d  %4d   %5.1f%%   Bal: $%.2f  MDD: %.2f%%\n", total_t, total_w, total_t > 0 ? (float)total_w/total_t*100 : 0, capital, max_dd);
     printf("-----------------------------------------------------------\n");
     
     return 0;
