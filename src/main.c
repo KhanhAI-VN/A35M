@@ -7,6 +7,9 @@
 static char html[8192], css[8192];
 static uint8_t logo[32768];
 static size_t logo_sz = 0;
+static char retrain_token[128] = {0};
+static int last_retrain_day = -1;
+static int last_retrain_year = -1;
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int code, const char *type) {
     struct MHD_Response *r = MHD_create_response_from_buffer(strlen(body), (void*)body, MHD_RESPMEM_MUST_COPY);
@@ -25,6 +28,38 @@ static void load(const char *p, char *b) {
 static void load_bin(const char *p, uint8_t *b, size_t max_sz, size_t *sz) {
     FILE *f = fopen(p, "rb");
     if (f) { *sz = fread(b, 1, max_sz, f); fclose(f); }
+}
+
+static void load_env() {
+    FILE *f = fopen(".env", "r");
+    if (!f) return;
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "Retrain =", 9) == 0) {
+            char *val = line + 9;
+            while (*val == ' ') val++;
+            strncpy(retrain_token, val, sizeof(retrain_token) - 1);
+            retrain_token[sizeof(retrain_token) - 1] = 0;
+            char *end = retrain_token + strlen(retrain_token) - 1;
+            while (end >= retrain_token && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = 0;
+        }
+    }
+    fclose(f);
+}
+
+void* scheduler_thread(void* arg) {
+    while (1) {
+        time_t now = time(NULL);
+        struct tm t; gmtime_r(&now, &t);
+        if (t.tm_hour == 23 && (t.tm_yday != last_retrain_day || t.tm_year != last_retrain_year)) {
+            printf("Triggering scheduled retrain (23:00 UTC)...\n");
+            trigger_github_retrain(retrain_token);
+            last_retrain_day = t.tm_yday;
+            last_retrain_year = t.tm_year;
+        }
+        sleep(60);
+    }
+    return NULL;
 }
 
 static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *url, const char *meth, const char *v, const char *data, size_t *s, void **ptr) {
@@ -50,6 +85,7 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
 
 int main(int argc, char **argv) {
     const char *coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
+    load_env();
     if (argc > 1) {
         printf("\n  ASSET       PRICE           PRED     CHANGE\n  ───────────────────────────────────────────\n");
         for (int i = 0; i < 5; i++) {
@@ -60,6 +96,13 @@ int main(int argc, char **argv) {
         printf("  ───────────────────────────────────────────\n\n");
         return 0;
     }
+
+    if (retrain_token[0]) {
+        pthread_t tid;
+        pthread_create(&tid, NULL, scheduler_thread, NULL);
+        pthread_detach(tid);
+    }
+
     load("src/web/web.html", html); 
     load("src/web/web.css", css);
     load_bin("src/web/logo.png", logo, sizeof(logo), &logo_sz);

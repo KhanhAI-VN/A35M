@@ -17,8 +17,8 @@ typedef struct {
     char ip[16]; time_t ip_t;
 } HostSession;
 
-static HostSession sessions[2] = {{0}};
-static const char *hosts[2] = {"api.binance.com", "raw.githubusercontent.com"};
+static HostSession sessions[3] = {{0}};
+static const char *hosts[3] = {"api.binance.com", "raw.githubusercontent.com", "api.github.com"};
 static pthread_mutex_t ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t ssl_init_once = PTHREAD_ONCE_INIT;
 static SSL_CTX *ssl_ctx = NULL;
@@ -26,7 +26,10 @@ static SSL_CTX *ssl_ctx = NULL;
 static int new_session_cb(SSL *s, SSL_SESSION *sess) {
     const char *h = SSL_get_servername(s, TLSEXT_NAMETYPE_host_name);
     if (!h) return 0;
-    int i = strcmp(h, hosts[0]) ? 1 : 0;
+    int i = 0;
+    if (!strcmp(h, hosts[1])) i = 1;
+    else if (!strcmp(h, hosts[2])) i = 2;
+
     pthread_mutex_lock(&ssl_mutex);
     if (sessions[i].s) SSL_SESSION_free(sessions[i].s);
     sessions[i].s = sess; sessions[i].t = time(NULL);
@@ -44,16 +47,18 @@ static void init_ssl_library(void) {
 
 static inline void cleanup_ssl_connection(SSLConnection c) {
     if (c.ssl) { SSL_shutdown(c.ssl); SSL_free(c.ssl); }
-    if (c.sock >= 0) close(c.sock); // An toàn vì mặc định giờ là -1
+    if (c.sock >= 0) close(c.sock); 
 }
 
 static inline SSLConnection create_ssl_connection(const char *h) {
     pthread_once(&ssl_init_once, init_ssl_library);
-    int i = strcmp(h, hosts[0]) ? 1 : 0;
+    int i = 0;
+    if (!strcmp(h, hosts[1])) i = 1;
+    else if (!strcmp(h, hosts[2])) i = 2;
 
     for (int retry = 0; retry <= 1; retry++) {
         int s = socket(AF_INET, SOCK_STREAM, 0);
-        if (s < 0) return (SSLConnection){NULL, -1}; // FIX: Không return {0}
+        if (s < 0) return (SSLConnection){NULL, -1};
 
         struct timeval tv = {5, 0};
         setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -121,7 +126,8 @@ static inline int send_http_request(SSLConnection *c, const char *req, char *res
     SSL_write(c->ssl, req, strlen(req));
     int t = 0, n;
     while (t < (int)sz - 1 && (n = SSL_read(c->ssl, res + t, sz - 1 - t)) > 0) t += n;
-    return res[t] = 0, t;
+    if (t >= 0) res[t] = 0;
+    return t;
 }
 
 #endif

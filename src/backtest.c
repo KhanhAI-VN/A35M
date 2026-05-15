@@ -15,9 +15,7 @@ typedef struct {
 #define N_COINS 5
 #define START_CAPITAL 20.0f
 #define TRADE_MARGIN 2.5f
-#define LEVERAGE 10.0f
-#define SL_PCT 0.02f
-#define TP_PCT 0.02f
+#define LEVERAGE 5.0f
 #define FEE_PCT 0.001f
 
 // Fetch multiple pages of OHLC data to overcome the 1000 limit
@@ -144,7 +142,7 @@ int main() {
     float capital = START_CAPITAL;
     int pos[N_COINS] = {0}; 
     float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0}, coin_pnl[N_COINS] = {0};
-    int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0}, coin_tp[N_COINS] = {0};
+    int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0};
 
     int total_days = min_days;
     int start_day = total_days - 180;
@@ -202,32 +200,7 @@ int main() {
             }
         }
 
-        // -------------------------------------------------------------
-        // PASS 3: Intraday Simulation (SL/TP check from 00:00 to 23:59)
-        // -------------------------------------------------------------
-        for (int c = 0; c < N_COINS; c++) {
-            if (pos[c] == 1) {
-                int h_start = offsets[c] + d * 24;
-                for (int h = 0; h < 24; h++) {
-                    OHLC hour = hourly_data[c][h_start + h];
-                    
-                    if (hour.low <= entry[c] * (1.0f - SL_PCT)) {
-                        float loss = entry_notional[c] * SL_PCT;
-                        float fee = entry_notional[c] * FEE_PCT * 2.0f;
-                        capital -= (loss + fee); coin_pnl[c] -= (loss + fee);
-                        coin_sl[c]++; coin_trades[c]++; pos[c] = 0;
-                        break;
-                    }
-                    if (hour.high >= entry[c] * (1.0f + TP_PCT)) {
-                        float profit = entry_notional[c] * TP_PCT;
-                        float fee = entry_notional[c] * FEE_PCT * 2.0f;
-                        capital += (profit - fee); coin_pnl[c] += (profit - fee);
-                        coin_tp[c]++; coin_wins[c]++; coin_trades[c]++; pos[c] = 0;
-                        break;
-                    }
-                }
-            }
-        }
+
         
         if (capital <= 0) { printf("BANKRUPT at day %d\n", d); break; }
     }
@@ -243,16 +216,16 @@ int main() {
 
     printf("\nDetailed Performance per Coin (1H Path):\n");
     printf("-----------------------------------------------------------\n");
-    printf("  COIN   TRADES  WINS  TP   SL   WR(%%)    PnL Estim.\n");
+    printf("  COIN   TRADES  WINS   WR(%%)    PnL Estim.\n");
     printf("-----------------------------------------------------------\n");
-    int total_t = 0, total_w = 0, total_s = 0, total_tp = 0;
+    int total_t = 0, total_w = 0;
     for (int c = 0; c < N_COINS; c++) {
         float wr = coin_trades[c] > 0 ? (float)coin_wins[c]/coin_trades[c]*100 : 0;
-        printf("  %-5s  %4d  %4d  %2d   %2d   %5.1f%%   $%+6.2f\n", coins[c], coin_trades[c], coin_wins[c], coin_tp[c], coin_sl[c], wr, coin_pnl[c]);
-        total_t += coin_trades[c]; total_w += coin_wins[c]; total_tp += coin_tp[c]; total_s += coin_sl[c];
+        printf("  %-5s  %4d  %4d   %5.1f%%   $%+6.2f\n", coins[c], coin_trades[c], coin_wins[c], wr, coin_pnl[c]);
+        total_t += coin_trades[c]; total_w += coin_wins[c];
     }
     printf("-----------------------------------------------------------\n");
-    printf("  TOTAL  %4d  %4d  %2d   %2d   %5.1f%%   Balance: $%.2f\n", total_t, total_w, total_tp, total_s, total_t > 0 ? (float)total_w/total_t*100 : 0, capital);
+    printf("  TOTAL  %4d  %4d   %5.1f%%   Balance: $%.2f\n", total_t, total_w, total_t > 0 ? (float)total_w/total_t*100 : 0, capital);
     printf("-----------------------------------------------------------\n");
     
     return 0;

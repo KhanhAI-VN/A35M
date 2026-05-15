@@ -12,4 +12,4 @@ backtest: src/backtest.c src/include/models.h src/include/openSSL.h src/include/
 	./backtest
 
 clean:
-	rm -f a35m backtest btc_predict web_server
+	rm -f a35m backtest

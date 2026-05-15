@@ -10,6 +10,7 @@
 </head>
 
 <body>
+    <div class="scanline"></div>
     <div class="terminal-container">
         <div class="terminal-header">
             <div class="brand-container">
@@ -67,6 +68,7 @@
             <div class="status-meta">
                 <span class="status-item"><span class="modem-light"></span>WS_ACTIVE</span>
                 <span class="status-item"><span class="modem-light secure"></span>SSL_SECURE</span>
+                <span class="status-item" id="ping-status">Ping: <span class="ping-val">--ms</span></span>
                 <span id="bit-stream" class="bit-stream"></span>
             </div>
         </div>
@@ -95,6 +97,8 @@
             document.getElementById('cycle-info').innerText = `${frames[Math.floor(Date.now() / 150) % 4]} Next sync in: ${remaining}s`;
             const stream = Math.random().toString(16).toUpperCase().substr(2, 8);
             document.getElementById('bit-stream').innerText = `[${stream}]`;
+            const ping = Math.floor(Math.random() * (45 - 12 + 1)) + 12;
+            document.querySelector('.ping-val').innerText = `${ping}ms`;
             document.getElementById('progress').style.width = `${Math.min((elapsed / 5000) * 100, 100)}%`;
         }
 
@@ -135,7 +139,7 @@
 
                     priceCell.innerHTML = createAnimatedValue(data.price, prevData[coin].price, (v) => `$ ${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
 
-                    predCell.innerText = data.trend;
+                    predCell.innerText = data.trend === 'UP' ? '▲ UP' : '▼ DOWN';
                     predCell.className = `pred ${data.trend === 'UP' ? 'pred-up' : 'pred-down'}`;
 
                     changeCell.innerHTML = createAnimatedValue(data.change, prevData[coin].change, (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%');

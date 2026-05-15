@@ -194,5 +194,24 @@ static inline PredictionResult run_prediction(const char *coin) {
     return res;
 }
 
+static inline void trigger_github_retrain(const char *token) {
+    SSLConnection c = create_ssl_connection("api.github.com");
+    if (!c.ssl) return;
+    char req[1024], res[1024];
+    const char *body = "{\"ref\":\"main\"}";
+    snprintf(req, sizeof(req), 
+        "POST /repos/KhanhAI-VN/Test/actions/workflows/retrain.yml/dispatches HTTP/1.1\r\n"
+        "Host: api.github.com\r\n"
+        "Accept: application/vnd.github+json\r\n"
+        "Authorization: Bearer %s\r\n"
+        "X-GitHub-Api-Version: 2022-11-28\r\n"
+        "User-Agent: Luckfox-Pico\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n\r\n"
+        "%s", token, strlen(body), body);
+    send_http_request(&c, req, res, sizeof(res));
+    cleanup_ssl_connection(c);
+}
 
 #endif
