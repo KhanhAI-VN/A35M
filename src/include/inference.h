@@ -21,7 +21,7 @@ static Kline   s_kline_buf[SEQ_LEN + 2];
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
     if (!c.ssl) return 0;
-    char req[256], *buf = malloc(131072); // Larger buffer for JSON
+    char req[256], *buf = malloc(131072);
     if (!buf) { cleanup_ssl_connection(c); return 0; }
     int n = 0, len, pos = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
@@ -42,7 +42,7 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
             if (ts && cl && cl->valuestring && cl->valuestring[0]) {
                 out[n].timestamp = (long long)ts->valuedouble;
                 out[n].close = atof(cl->valuestring);
-                if (out[n].close > 0) n++; // Only count valid positive prices
+                if (out[n].close > 0) n++;
             }
         }
         cJSON_Delete(root);
@@ -63,14 +63,11 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
         if (!h && (b = strstr((char*)out, "\r\n\r\n"))) {
             char *status = strstr((char*)out, " ");
             if (!status || atoi(status + 1) != 200) { h = -1; break; }
-            char *cl = strcasestr((char*)out, "Content-Length:");
+            char *cl_hdr = strcasestr((char*)out, "Content-Length:");
             h = (int)((b + 4) - (char*)out);
-            if (cl && cl < b) {
-                char *cl_val = strchr(cl, ':');
-                if (cl_val) {
-                    int expected = atoi(cl_val + 1);
-                    if (expected > sz - h) { h = -1; break; }
-                }
+            if (cl_hdr && cl_hdr < b) {
+                char *cl_val = strchr(cl_hdr, ':');
+                if (cl_val && (atoi(cl_val + 1) > (sz - h))) { h = -1; break; }
             }
         }
     }
@@ -88,130 +85,78 @@ static inline PredictionResult run_prediction(const char *coin) {
         }
     }
     char symbol[32]; snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
-    Kline latest[2] = {0};
-    int n = fetch_binance_data(symbol, latest, 2);
-    if (n < 2) {
-        pthread_mutex_lock(&cache_mutex);
-        CoinCache *cache = get_coin_cache(cname);
-        PredictionResult res = cache->last_res;
-        memcpy(res.coin, cache->coin, sizeof(res.coin));
-        pthread_mutex_unlock(&cache_mutex);
-        return res;
-    }
-
+    
     pthread_mutex_lock(&cache_mutex);
     CoinCache *cache = get_coin_cache(cname);
-
+    
     if (should_update_cache(cache)) {
-
-        int days_missing = 0;
-        if (cache->kline_count == SEQ_LEN + 2)
-            days_missing = (int)((latest[1].timestamp - cache->klines[SEQ_LEN + 1].timestamp) / 86400000);
-
-        int incremental = (days_missing == 1);
-        int partial     = (days_missing >= 2 && days_missing <= SEQ_LEN);
-        int need_model  = 1; 
-
         pthread_mutex_unlock(&cache_mutex);
-
-        int m_len   = 0;
-        int f_count = 0;
-
+        
         pthread_mutex_lock(&scratch_mutex);
-        if (need_model)
-            m_len = download_model_from_github(cname, s_model_buf, sizeof(s_model_buf));
-        if (!incremental) {
-            int limit = partial ? (days_missing + 1) : (SEQ_LEN + 2);
-            f_count = fetch_binance_data(symbol, s_kline_buf, limit);
-        }
-
+        int m_len = download_model_from_github(cname, s_model_buf, sizeof(s_model_buf));
+        int f_count = fetch_binance_data(symbol, s_kline_buf, SEQ_LEN + 2);
+        
         pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
         if (should_update_cache(cache)) {
             uint8_t pool_idx = (uint8_t)(cache - caches);
-            if (m_len > 0) {
-                cache->model = load_model(pool_idx, s_model_buf, m_len);
-            }
-
-            if (!cache->model) {
-                PredictionResult res = {0}; 
+            if (m_len > 0) cache->model = load_model(pool_idx, s_model_buf, m_len);
+            
+            if (!cache->model || f_count < SEQ_LEN + 2) {
+                PredictionResult res = {0};
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
-                strncpy(res.error_msg, "Model missing", sizeof(res.error_msg) - 1);
-                res.error_msg[sizeof(res.error_msg) - 1] = 0;
+                snprintf(res.error_msg, sizeof(res.error_msg), "%s", !cache->model ? "Model error" : "Data error");
                 pthread_mutex_unlock(&scratch_mutex);
                 pthread_mutex_unlock(&cache_mutex);
                 return res;
             }
 
-            if (incremental) {
-                if (cache->klines[SEQ_LEN].close <= 0 || latest[1].close <= 0) {
-                    pthread_mutex_unlock(&scratch_mutex); // FIX: Ensure scratch_mutex is unlocked
-                    pthread_mutex_unlock(&cache_mutex);
-                    return (PredictionResult){.success = 0, .coin = "", .error_msg = "Invalid price data"};
-                }
-                memmove(cache->klines, cache->klines + 1, (SEQ_LEN + 1) * sizeof(Kline));
-                cache->klines[SEQ_LEN + 1] = latest[1];
-                memmove(cache->input, cache->input + 1, (SEQ_LEN - 1) * sizeof(float));
-                cache->input[SEQ_LEN - 1] = logf((float)cache->klines[SEQ_LEN].close / (float)cache->klines[SEQ_LEN - 1].close);
-            } else if (partial && f_count == days_missing + 1) {
-                int shift = days_missing;
-                memmove(cache->klines, cache->klines + shift, (SEQ_LEN + 2 - shift) * sizeof(Kline));
-                for (int k = 0; k < shift; k++)
-                    cache->klines[SEQ_LEN + 2 - shift + k] = s_kline_buf[k + 1];
-                for (int i = 0; i < SEQ_LEN; i++) {
-                    float c1 = (float)cache->klines[i].close, c2 = (float)cache->klines[i+1].close;
-                    cache->input[i] = (c1 > 0 && c2 > 0) ? logf(c2 / c1) : 0;
-                }
-            } else if (!partial && f_count >= SEQ_LEN + 2) {
-                cache->kline_count = f_count;
-                memcpy(cache->klines, s_kline_buf, f_count * sizeof(Kline));
-                for (int i = 0; i < SEQ_LEN; i++) {
-                    float c1 = (float)cache->klines[i].close, c2 = (float)cache->klines[i+1].close;
-                    cache->input[i] = (c1 > 0 && c2 > 0) ? logf(c2 / c1) : 0;
-                }
+            cache->kline_count = f_count;
+            memcpy(cache->klines, s_kline_buf, f_count * sizeof(Kline));
+            for (int i = 0; i < SEQ_LEN; i++) {
+                float c1 = (float)cache->klines[i].close, c2 = (float)cache->klines[i+1].close;
+                cache->input[i] = (c1 > 1e-9f && c2 > 1e-9f) ? logf(c2 / c1) : 0;
             }
+            
+            update_cache_day(cache);
             pthread_mutex_unlock(&scratch_mutex);
 
-            if (cache->kline_count >= SEQ_LEN + 2) {
-                float local_input[SEQ_LEN];
-                memcpy(local_input, cache->input, sizeof(local_input));
-                Model *m = cache->model;
-                pthread_mutex_unlock(&cache_mutex);
+            float local_input[SEQ_LEN];
+            memcpy(local_input, cache->input, sizeof(local_input));
+            Model *m = cache->model;
+            pthread_mutex_unlock(&cache_mutex);
 
-                struct timeval start, end; gettimeofday(&start, NULL);
-                float p_val = predict(m, local_input);
-                gettimeofday(&end, NULL);
+            struct timeval start, end; gettimeofday(&start, NULL);
+            float p_val = predict(m, local_input);
+            gettimeofday(&end, NULL);
 
-                pthread_mutex_lock(&cache_mutex);
-                cache->pred_log_diff = p_val;
-                cache->last_res.success = !isnan(p_val) && !isinf(p_val);
-                cache->last_res.inference_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
-                cache->last_res.pred_change_pct = cache->last_res.success ? (expf(p_val) - 1.0f) * 100.0f : 0;
-                
-                time_t pred_ts = (n == 2 ? latest[1].timestamp : cache->klines[cache->kline_count-1].timestamp) / 1000 + 86400;
-                struct tm t_pred; gmtime_r(&pred_ts, &t_pred);
-                strftime(cache->last_res.date, sizeof(cache->last_res.date), "%Y-%m-%d", &t_pred);
-                update_cache_day(cache);
-            } else {
-                PredictionResult res = {0}; 
-                memcpy(res.coin, cache->coin, sizeof(res.coin));
-                snprintf(res.error_msg, sizeof(res.error_msg), "Data error (%d)", cache->kline_count);
-                pthread_mutex_unlock(&cache_mutex);
-                return res;
-            }
+            pthread_mutex_lock(&cache_mutex);
+            cache->pred_log_diff = p_val;
+            cache->last_res.success = !isnan(p_val) && !isinf(p_val);
+            cache->last_res.inference_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
+            cache->last_res.pred_change_pct = cache->last_res.success ? (expf(p_val) - 1.0f) * 100.0f : 0;
+            
+            time_t pred_ts = (cache->klines[cache->kline_count-1].timestamp) / 1000 + 86400;
+            struct tm t_pred; gmtime_r(&pred_ts, &t_pred);
+            strftime(cache->last_res.date, sizeof(cache->last_res.date), "%Y-%m-%d", &t_pred);
         } else {
-            pthread_mutex_unlock(&scratch_mutex); // Handle case where should_update_cache became false
+            pthread_mutex_unlock(&scratch_mutex);
         }
+    }
+
+    // Secondary fetch only if needed for current price update (not full sync)
+    Kline latest[2] = {0};
+    int n = fetch_binance_data(symbol, latest, 2);
+    if (n == 2) {
+        cache->last_res.last_price = (float)latest[1].close;
+        float yesterday_close = (float)latest[0].close;
+        cache->last_res.change_pct = (yesterday_close > 1e-9) ? ((cache->last_res.last_price - yesterday_close) / yesterday_close) * 100.0f : 0;
+        cache->last_res.pred_price = cache->last_res.last_price * expf(cache->pred_log_diff);
+        cache->last_res.trend = (cache->last_res.pred_price > cache->last_res.last_price) ? 1 : 0;
     }
 
     PredictionResult res = cache->last_res;
     memcpy(res.coin, cache->coin, sizeof(res.coin));
-    res.last_price = (float)latest[1].close;
-    float yesterday_close = (float)latest[0].close;
-    res.change_pct = (yesterday_close > 1e-9) ? ((res.last_price - yesterday_close) / yesterday_close) * 100.0f : 0;
-    res.pred_price = res.last_price * expf(cache->pred_log_diff);
-    res.trend = (res.pred_price > res.last_price) ? 1 : 0;
-
     pthread_mutex_unlock(&cache_mutex);
     return res;
 }

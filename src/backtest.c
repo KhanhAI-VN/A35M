@@ -134,8 +134,7 @@ int main() {
         if (nd < min_days) min_days = nd;
         
         int m_len = download_model_from_github(coins[c], model_bufs[c], 32768);
-        model_set_pool(c);
-        models[c] = load_model(model_bufs[c], m_len);
+        models[c] = load_model(c, model_bufs[c], m_len);
         if (!models[c]) { printf("Error: Model load failed for %s\n", coins[c]); return 1; }
     }
     
