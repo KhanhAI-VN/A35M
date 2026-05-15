@@ -3,6 +3,7 @@
 #include <string.h>
 #include <microhttpd.h>
 #include "include/inference.h"
+#include "../3libs/log.h"
 
 static char html[8192], css[8192];
 static uint8_t logo[32768];
@@ -52,7 +53,7 @@ void* scheduler_thread(void* arg) {
         time_t now = time(NULL);
         struct tm t; gmtime_r(&now, &t);
         if (t.tm_hour == 23 && (t.tm_yday != last_retrain_day || t.tm_year != last_retrain_year)) {
-            printf("Triggering scheduled retrain (23:00 UTC)...\n");
+            log_info("Triggering scheduled retrain (23:00 UTC)...");
             trigger_github_retrain(retrain_token);
             last_retrain_day = t.tm_yday;
             last_retrain_year = t.tm_year;
@@ -122,7 +123,8 @@ int main(int argc, char **argv) {
     load_bin("src/web/logo.png", logo, sizeof(logo), &logo_sz);
 
     struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, 8080, 0, 0, &handler, 0, MHD_OPTION_END);
-    if (!d) return 1;
+    if (!d) { log_fatal("Failed to start HTTP daemon on port 8080"); return 1; }
+    log_info("Shrimp Dashboard started on http://localhost:8080");
     printf("Shrimp Dashboard: http://localhost:8080\nPress Enter to stop.\n");
     getchar(); MHD_stop_daemon(d); return 0;
 }

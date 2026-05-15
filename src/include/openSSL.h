@@ -10,6 +10,7 @@
 #include <time.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include "../../3libs/log.h"
 
 
 typedef struct { SSL *ssl; int sock; } SSLConnection;
@@ -124,7 +125,7 @@ static inline SSLConnection create_ssl_connection(const char *h) {
         int ret = SSL_connect(ssl);
         if (ret <= 0) {
             int ssl_err = SSL_get_error(ssl, ret);
-            fprintf(stderr, "SSL connect error (code %d) for %s\n", ssl_err, h);
+            log_error("SSL connect failed (code %d) for %s", ssl_err, h);
             SSL_free(ssl);
             pthread_mutex_lock(&ssl_mutex);
             if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
@@ -133,7 +134,7 @@ static inline SSLConnection create_ssl_connection(const char *h) {
         }
 
         if (SSL_get_verify_result(ssl) != X509_V_OK) {
-            fprintf(stderr, "SSL verify error for %s\n", h);
+            log_warn("SSL verify failed for %s", h);
             SSL_free(ssl); close(s); return (SSLConnection){NULL, -1};
         }
 

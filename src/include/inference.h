@@ -6,6 +6,7 @@
 #include "openSSL.h"
 #include "../../3libs/cJSON.h"
 #include "../../3libs/sds.h"
+#include "../../3libs/log.h"
 #include <sys/time.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -92,6 +93,7 @@ static inline PredictionResult run_prediction(const char *coin) {
     const char *cname = coin ? coin : "BTC";
     for (const char *p = cname; *p; p++) {
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9'))) {
+            log_warn("Invalid symbol rejected: %s", cname);
             return (PredictionResult){.success = 0, .coin = "", .error_msg = "Invalid symbol"};
         }
     }
@@ -108,6 +110,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         Kline *l_kline_buf = malloc((SEQ_LEN + 2) * sizeof(Kline));
         if (!l_model_buf || !l_kline_buf) {
             free(l_model_buf); free(l_kline_buf);
+            log_error("Memory allocation failed for coin %s", cname);
             return (PredictionResult){.success = 0, .coin = "", .error_msg = "Memory error"};
         }
 
@@ -121,6 +124,10 @@ static inline PredictionResult run_prediction(const char *coin) {
             if (m_len > 0) cache->model = load_model(pool_idx, l_model_buf, m_len);
             
             if (!cache->model || f_count < SEQ_LEN + 2) {
+                log_error("%s: %s (m_len=%d f_count=%d)",
+                    cname,
+                    !cache->model ? "model load failed" : "insufficient kline data",
+                    m_len, f_count);
                 PredictionResult res = {0};
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
                 snprintf(res.error_msg, sizeof(res.error_msg), "%s", !cache->model ? "Model error" : "Data error");
