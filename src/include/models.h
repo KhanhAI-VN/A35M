@@ -25,21 +25,24 @@ static uint8_t active_pool = 0;
 static inline void model_set_pool(uint8_t idx) { active_pool = idx % MAX_CACHED_COINS; }
 
 static inline void* model_alloc(size_t sz) {
+    if (sz > 32768) return NULL;
     sz = (sz + 7) & ~7;
     size_t *offs = model_offs + active_pool;
+    if (*offs + sz > sizeof(model_pools[0])) return NULL;
     uint8_t *p = model_pools[active_pool] + *offs;
-    return (*offs += sz) <= sizeof(model_pools[0]) ? p : (*offs -= sz, NULL);
+    *offs += sz;
+    return p;
 }
 
 static inline Model* load_model(const uint8_t *b, size_t sz) {
     if (sz < 12 || memcmp(b, "A35M", 4)) return NULL;
     model_offs[active_pool] = 0;
-#define _CHECK(n) if (p + (n) > b + sz) { model_offs[active_pool] = 0; return NULL; }
+#define _CHECK(n) if ((size_t)(p - b) + (n) > sz) { model_offs[active_pool] = 0; return NULL; }
 #define _ALLOC(ptr, n) do { if (!((ptr) = model_alloc(n))) { model_offs[active_pool] = 0; return NULL; } } while(0)
     Model *m; _ALLOC(m, sizeof(Model));
     const uint8_t *p = b + 8;
     _CHECK(4); memcpy(&m->num_tensors, p, 4); p += 4;
-    if (m->num_tensors > 1000) { model_offs[active_pool] = 0; return NULL; } // Sanity check
+    if (m->num_tensors > 100) { model_offs[active_pool] = 0; return NULL; } // Sanity check
     _ALLOC(m->tensors, sizeof(Tensor) * m->num_tensors);
     for (uint32_t i = 0; i < m->num_tensors; i++) {
         uint16_t nl; _CHECK(2); memcpy(&nl, p, 2); p += 2;
@@ -51,7 +54,7 @@ static inline Model* load_model(const uint8_t *b, size_t sz) {
         _CHECK(5); // num_dims padding byte + data_len
         p++; // skip padding
         memcpy(&m->tensors[i].data_len, p, 4); p += 4;
-        if (m->tensors[i].data_len > 1000000) { model_offs[active_pool] = 0; return NULL; } // Sanity check
+        if (m->tensors[i].data_len > 8192) { model_offs[active_pool] = 0; return NULL; } // Sanity check matching 32KB pool
         _CHECK(4 * m->tensors[i].data_len); _ALLOC(m->tensors[i].data, 4 * m->tensors[i].data_len); 
         memcpy(m->tensors[i].data, p, 4 * m->tensors[i].data_len); p += 4 * m->tensors[i].data_len;
     }

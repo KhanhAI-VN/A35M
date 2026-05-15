@@ -86,23 +86,30 @@ static inline SSLConnection create_ssl_connection(const char *h) {
         memcpy(&a.sin_addr, &ia, sizeof(ia));
 
         SSL_SESSION *sess = sessions[i].s;
-        if (sess && difftime(time(NULL), sessions[i].t) > 86400) sess = NULL;
+        if (sess) {
+            if (difftime(time(NULL), sessions[i].t) > 86400) {
+                SSL_SESSION_free(sessions[i].s); sessions[i].s = sess = NULL;
+            } else {
+                SSL_SESSION_up_ref(sess);
+            }
+        }
         pthread_mutex_unlock(&ssl_mutex);
 
         if (connect(s, (struct sockaddr*)&a, sizeof(a)) < 0) {
             close(s);
+            if (sess) SSL_SESSION_free(sess);
             pthread_mutex_lock(&ssl_mutex);
             sessions[i].ip[0] = 0;
             pthread_mutex_unlock(&ssl_mutex);
             continue;
         }
 
-        if (!ssl_ctx) { close(s); return (SSLConnection){NULL, -1}; }
+        if (!ssl_ctx) { close(s); if (sess) SSL_SESSION_free(sess); return (SSLConnection){NULL, -1}; }
         SSL *ssl = SSL_new(ssl_ctx);
-        if (!ssl) { close(s); continue; }
+        if (!ssl) { close(s); if (sess) SSL_SESSION_free(sess); continue; }
         SSL_set_fd(ssl, s);
         SSL_set_tlsext_host_name(ssl, h);
-        if (sess) SSL_set_session(ssl, sess);
+        if (sess) { SSL_set_session(ssl, sess); SSL_SESSION_free(sess); sess = NULL; }
 
         if (SSL_connect(ssl) <= 0) {
             SSL_free(ssl);

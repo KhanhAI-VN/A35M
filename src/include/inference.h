@@ -24,11 +24,11 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
     int n = 0, len, pos = 0, h = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
     SSL_write(c.ssl, req, strlen(req));
-    while (n < limit && pos < 8191 && (len = SSL_read(c.ssl, buf + pos, 8191 - pos)) > 0) {
-        pos += len; buf[pos] = 0; p = buf;
+    while (n < limit && pos < 8192 && (len = SSL_read(c.ssl, buf + pos, 8192 - pos)) > 0) {
+        pos += len; buf[pos < 8193 ? pos : 8192] = 0; p = buf;
         if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
-                if (pos > 8000) { memmove(buf, buf + pos - 8, 8); pos = 8; }
+                if (pos > 8000) { memmove(buf, buf + pos - 128, 128); pos = 128; }
                 continue;
             }
             char *status = strstr(buf, " ");
