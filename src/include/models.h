@@ -18,14 +18,14 @@ typedef struct { uint32_t version, num_tensors; Tensor *tensors; } Model;
 typedef struct { float mean, stdev; } RevINStats;
 typedef struct { double close; long long timestamp; } Kline;
 
-static uint8_t model_pools[MAX_CACHED_COINS][32768];
+static uint8_t model_pools[MAX_CACHED_COINS][49152];
 static size_t model_offs[MAX_CACHED_COINS] = {0};
 static uint8_t active_pool = 0;
 
 static inline void model_set_pool(uint8_t idx) { active_pool = idx % MAX_CACHED_COINS; }
 
 static inline void* model_alloc(size_t sz) {
-    if (sz > 32768) return NULL;
+    if (sz > 49152) return NULL;
     sz = (sz + 7) & ~7;
     size_t *offs = model_offs + active_pool;
     if (*offs + sz > sizeof(model_pools[0])) return NULL;
@@ -72,24 +72,38 @@ static inline Tensor* get_tp(Model *m, const char *pre, const char *post) {
 }
 
 static inline void revin_norm(float *x, RevINStats *s, Model *m) {
+    if (!x || !s || !m) return;
     float sum = 0, sq = 0;
     for (int i = 0; i < SEQ_LEN; i++) { sum += x[i]; sq += x[i] * x[i]; }
     s->mean = sum / SEQ_LEN; 
     float var = sq / SEQ_LEN - s->mean * s->mean;
     s->stdev = sqrtf((var > 0.0f ? var : 0.0f) + 1e-5f); 
     Tensor *w = get_t(m, "revin_layer_affine_weight"), *b = get_t(m, "revin_layer_affine_bias");
-    for (int i = 0; i < SEQ_LEN; i++) x[i] = ((x[i] - s->mean) / s->stdev) * (w ? w->data[0] : 1) + (b ? b->data[0] : 0);
+    if (!w || w->data_len < 1 || !b || b->data_len < 1) {
+        for (int i = 0; i < SEQ_LEN; i++) x[i] = (x[i] - s->mean) / s->stdev;
+        return;
+    }
+    for (int i = 0; i < SEQ_LEN; i++) x[i] = ((x[i] - s->mean) / s->stdev) * w->data[0] + b->data[0];
 }
 
 static inline float revin_denorm(float x, RevINStats *s, Model *m) {
+    if (!s || !m) return x;
     Tensor *w = get_t(m, "revin_layer_affine_weight"), *b = get_t(m, "revin_layer_affine_bias");
-    return ((x - (b ? b->data[0] : 0)) / ((w ? w->data[0] : 1) + 1e-10f)) * s->stdev + s->mean;
+    float weight = (w && w->data_len > 0) ? w->data[0] : 1.0f;
+    float bias = (b && b->data_len > 0) ? b->data[0] : 0.0f;
+    return ((x - bias) / (weight + 1e-10f)) * s->stdev + s->mean;
 }
 
 static inline void series_decomp(float *x, float *res, float *tr) {
+    float sum = 0;
+    for (int m = 0; m < KERNEL_SIZE; m++) sum += x[0];
     for (int i = 0; i < SEQ_LEN; i++) {
-        float s = 0; for (int m = 0; m < KERNEL_SIZE; m++) s += x[i - m < 0 ? 0 : i - m];
-        tr[i] = s / KERNEL_SIZE; res[i] = x[i] - tr[i];
+        tr[i] = sum / KERNEL_SIZE;
+        res[i] = x[i] - tr[i];
+        if (i + 1 < SEQ_LEN) {
+            sum -= (i - KERNEL_SIZE + 1 < 0) ? x[0] : x[i - KERNEL_SIZE + 1];
+            sum += x[i + 1];
+        }
     }
 }
 
@@ -97,45 +111,57 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
     float feat[N_P * D_MODEL]; 
     float avg[D_MODEL] = {0}, hid[D_MODEL];
     Tensor *wc = get_tp(m, pre, "_patch_conv_conv_weight"), *bc = get_tp(m, pre, "_patch_conv_conv_bias");
-    if (!wc || !bc) return;
+    if (!wc || !bc || wc->data_len < (2 * D_MODEL * PATCH_LEN) || bc->data_len < (2 * D_MODEL)) return;
 
-    for (int p = 0; p < N_P; p++) for (int d = 0; d < D_MODEL; d++) {
-        float v = bc->data[d], g = bc->data[d + D_MODEL];
+    for (int p = 0; p < N_P; p++) {
+        float patch_in[PATCH_LEN];
         for (int k = 0; k < PATCH_LEN; k++) {
-            float iv = (p * STRIDE + k < SEQ_LEN) ? in[p * STRIDE + k] : in[SEQ_LEN - 1];
-            v += iv * wc->data[d * PATCH_LEN + k]; g += iv * wc->data[(d + D_MODEL) * PATCH_LEN + k];
+            patch_in[k] = (p * STRIDE + k < SEQ_LEN) ? in[p * STRIDE + k] : in[SEQ_LEN - 1];
         }
-        feat[d * N_P + p] = v * (0.5f * g * (1 + erff(g * 0.70710678f)));
+        for (int d = 0; d < D_MODEL; d++) {
+            float v = bc->data[d], g = bc->data[d + D_MODEL];
+            float *w_v = &wc->data[d * PATCH_LEN];
+            float *w_g = &wc->data[(d + D_MODEL) * PATCH_LEN];
+            for (int k = 0; k < PATCH_LEN; k++) {
+                v += patch_in[k] * w_v[k]; 
+                g += patch_in[k] * w_g[k];
+            }
+            feat[d * N_P + p] = v * (0.5f * g * (1 + erff(g * 0.70710678f)));
+        }
     }
     for (int c = 0; c < D_MODEL; c++) { 
-        for (int p = 0; p < N_P; p++) avg[c] += feat[c * N_P + p]; 
-        avg[c] /= N_P; 
+        float s = 0; for (int p = 0; p < N_P; p++) s += feat[c * N_P + p]; 
+        avg[c] = s / N_P; 
     }
     Tensor *w1 = get_tp(m, pre, "_patch_conv_se_fc_0_weight"), *b1 = get_tp(m, pre, "_patch_conv_se_fc_0_bias"), 
            *w2 = get_tp(m, pre, "_patch_conv_se_fc_2_weight"), *b2 = get_tp(m, pre, "_patch_conv_se_fc_2_bias");
-    if (!w1 || !b1 || !w2 || !b2) return;
+    if (!w1 || !b1 || !w2 || !b2 || w1->num_dims < 2 || w2->num_dims < 2) return;
+    
+    int h_dim = (int)w1->dims[0];
+    if (h_dim > D_MODEL || w1->data_len < h_dim * D_MODEL || b1->data_len < h_dim || 
+        w2->data_len < D_MODEL * h_dim || b2->data_len < D_MODEL) return;
 
-    for (int i = 0; i < (int)w1->dims[0] && i < D_MODEL; i++) { 
+    for (int i = 0; i < h_dim; i++) { 
         hid[i] = b1->data[i]; 
         for (int j = 0; j < D_MODEL; j++) hid[i] += avg[j] * w1->data[i * D_MODEL + j]; 
         if (hid[i] < 0) hid[i] = 0; // ReLU
     }
     for (int i = 0; i < D_MODEL; i++) {
         float sc = b2->data[i]; 
-        for (int j = 0; j < (int)w1->dims[0] && j < D_MODEL; j++) sc += hid[j] * w2->data[i * w1->dims[0] + j];
+        for (int j = 0; j < h_dim; j++) sc += hid[j] * w2->data[i * h_dim + j];
         sc = 1 / (1 + expf(-sc)); // Sigmoid
         for (int p = 0; p < N_P; p++) feat[i * N_P + p] *= sc;
     }
     Tensor *wh = get_tp(m, pre, "_head_linear_weight"), *bh = get_tp(m, pre, "_head_linear_bias");
-    if (!wh || !bh) return;
+    if (!wh || !bh || wh->data_len < (D_MODEL * N_P) || bh->data_len < 1) return;
     out[0] = bh->data[0]; 
     for (int i = 0; i < D_MODEL * N_P; i++) out[0] += feat[i] * wh->data[i];
 }
 
 static inline float predict(Model *m, float *in) {
-    // Stack-allocated buffers (~4.3KB)
+    if (!m || !in) return NAN;
     float x[SEQ_LEN], res[SEQ_LEN], tr[SEQ_LEN]; 
-    float ro[1], to[1]; RevINStats s;
+    float ro[1] = {0}, to[1] = {0}; RevINStats s;
     memcpy(x, in, SEQ_LEN * 4); 
     revin_norm(x, &s, m); 
     series_decomp(x, res, tr);

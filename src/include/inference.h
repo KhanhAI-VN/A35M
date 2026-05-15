@@ -23,40 +23,41 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
     char req[256], buf[8193], *p, *s1, *e1;
     int n = 0, len, pos = 0, h = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
-    SSL_write(c.ssl, req, strlen(req));
-    while (n < limit && pos < 8192 && (len = SSL_read(c.ssl, buf + pos, 8192 - pos)) > 0) {
-        pos += len; buf[pos < 8193 ? pos : 8192] = 0; p = buf;
+    if (SSL_write(c.ssl, req, (int)strlen(req)) <= 0) { cleanup_ssl_connection(c); return 0; }
+    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8192 - pos)) > 0) {
+        pos += len; buf[pos] = 0; p = buf;
         if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
-                if (pos > 8000) { 
-                    memmove(buf, buf + pos - 128, 128); 
-                    pos = 128; 
-                    buf[pos] = 0; 
-                }
+                if (pos >= 8192) { cleanup_ssl_connection(c); return 0; }
                 continue;
             }
             char *status = strstr(buf, " ");
             if (!status || atoi(status + 1) != 200) { cleanup_ssl_connection(c); return 0; }
             p += 4; h = 1;
         }
-        while (n < limit && (s1 = strstr(p, "["))) {
+        while (n < limit && p < buf + pos && (s1 = strstr(p, "["))) {
             if (s1[1] == '[') { p = s1 + 1; continue; }
             if (!(e1 = strstr(s1, "]"))) break;
+            *e1 = 0; // Temporarily terminate string for safer parsing
             char *ptr = s1 + 1;
             out[n].timestamp = atoll(ptr);
             int commas = 0;
-            char *comma_ptr = s1 + 1;
-            while(comma_ptr < e1 && commas < 4) { if(*comma_ptr == ',') commas++; comma_ptr++; }
-            if(commas == 4) {
-                while(comma_ptr < e1 && (*comma_ptr == '"' || *comma_ptr == ' ' || *comma_ptr == ',')) comma_ptr++;
-                out[n].close = atof(comma_ptr);
-                n++;
+            for (char *cptr = s1 + 1; cptr < e1; cptr++) {
+                if (*cptr == ',') {
+                    if (++commas == 4) {
+                        while (cptr < e1 && (*cptr == ',' || *cptr == ' ' || *cptr == '\"')) cptr++;
+                        out[n].close = atof(cptr);
+                        n++;
+                        break;
+                    }
+                }
             }
             p = e1 + 1;
         }
-        int remaining = (int)(buf + pos - p);
-        if (remaining > 0) memmove(buf, p, remaining);
-        pos = remaining;
+        int rem = (int)(buf + pos - p);
+        if (rem > 0 && rem < 8192) memmove(buf, p, rem);
+        else rem = 0;
+        pos = rem;
     }
     cleanup_ssl_connection(c);
     return n;
@@ -68,22 +69,25 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
     char req[256], *b;
     int n = 0, r, h = 0;
     snprintf(req, 256, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
-    SSL_write(c.ssl, req, strlen(req));
+    if (SSL_write(c.ssl, req, (int)strlen(req)) <= 0) { cleanup_ssl_connection(c); return 0; }
     while (n < sz - 1 && (r = SSL_read(c.ssl, out + n, sz - 1 - n)) > 0) {
         n += r; out[n] = 0;
         if (!h && (b = strstr((char*)out, "\r\n\r\n"))) {
             char *status = strstr((char*)out, " ");
-            if (!status || atoi(status + 1) != 200) break;
+            if (!status || atoi(status + 1) != 200) { h = -1; break; }
             char *cl = strcasestr((char*)out, "Content-Length:");
             h = (int)((b + 4) - (char*)out);
-            if (cl) {
-                int expected = atoi(cl + 15);
-                if (expected > 0 && (n - h) >= expected) break;
+            if (cl && cl < b) {
+                char *cl_val = strchr(cl, ':');
+                if (cl_val) {
+                    int expected = atoi(cl_val + 1);
+                    if (expected > sz - h) { h = -1; break; }
+                }
             }
         }
     }
     cleanup_ssl_connection(c);
-    if (!h || h >= n) return 0;
+    if (h <= 0 || h >= n) return 0;
     memmove(out, out + h, n - h);
     return n - h;
 }
@@ -111,7 +115,6 @@ static inline PredictionResult run_prediction(const char *coin) {
     CoinCache *cache = get_coin_cache(cname);
 
     if (should_update_cache(cache)) {
-        int pool_idx = cache - caches;
 
         int days_missing = 0;
         if (cache->kline_count == SEQ_LEN + 2)
@@ -138,6 +141,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
         if (should_update_cache(cache)) {
+            int pool_idx = (int)(cache - caches);
             if (m_len > 0) {
                 model_set_pool(pool_idx);
                 cache->model = load_model(s_model_buf, m_len);
@@ -218,7 +222,7 @@ static inline void trigger_github_retrain(const char *token) {
     if (!c.ssl) return;
     char req[1024], res[1024];
     const char *body = "{\"ref\":\"main\"}";
-    snprintf(req, sizeof(req), 
+    int req_len = snprintf(req, sizeof(req), 
         "POST /repos/KhanhAI-VN/Test/actions/workflows/retrain.yml/dispatches HTTP/1.1\r\n"
         "Host: api.github.com\r\n"
         "Accept: application/vnd.github+json\r\n"
@@ -229,7 +233,9 @@ static inline void trigger_github_retrain(const char *token) {
         "Content-Length: %zu\r\n"
         "Connection: close\r\n\r\n"
         "%s", token, strlen(body), body);
-    send_http_request(&c, req, res, sizeof(res));
+    if (req_len >= 0 && req_len < (int)sizeof(req)) {
+        send_http_request(&c, req, res, sizeof(res));
+    }
     cleanup_ssl_connection(c);
 }
 

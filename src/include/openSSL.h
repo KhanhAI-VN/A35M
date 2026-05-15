@@ -2,6 +2,8 @@
 #define OPENSSL_H
 
 #include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <stdio.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
@@ -23,12 +25,15 @@ static pthread_mutex_t ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t ssl_init_once = PTHREAD_ONCE_INIT;
 static SSL_CTX *ssl_ctx = NULL;
 
+static int get_host_index(const char *h) {
+    for (int i = 0; i < 3; i++) if (!strcmp(h, hosts[i])) return i;
+    return 0;
+}
+
 static int new_session_cb(SSL *s, SSL_SESSION *sess) {
     const char *h = SSL_get_servername(s, TLSEXT_NAMETYPE_host_name);
     if (!h) return 0;
-    int i = 0;
-    if (!strcmp(h, hosts[1])) i = 1;
-    else if (!strcmp(h, hosts[2])) i = 2;
+    int i = get_host_index(h);
 
     pthread_mutex_lock(&ssl_mutex);
     if (sessions[i].s) SSL_SESSION_free(sessions[i].s);
@@ -55,21 +60,20 @@ static inline void cleanup_ssl_connection(SSLConnection c) {
 
 static inline SSLConnection create_ssl_connection(const char *h) {
     pthread_once(&ssl_init_once, init_ssl_library);
-    int i = 0;
-    if (!strcmp(h, hosts[1])) i = 1;
-    else if (!strcmp(h, hosts[2])) i = 2;
+    int i = get_host_index(h);
 
     for (int retry = 0; retry <= 1; retry++) {
         int s = socket(AF_INET, SOCK_STREAM, 0);
         if (s < 0) return (SSLConnection){NULL, -1};
 
-        struct timeval tv = {5, 0};
+        struct timeval tv = {10, 0}; 
         setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
         struct sockaddr_in a = {AF_INET, htons(443), {0}, {0}};
 
         pthread_mutex_lock(&ssl_mutex);
-        if (!sessions[i].ip[0] || difftime(time(NULL), sessions[i].ip_t) > 86400) {
+        time_t now = time(NULL);
+        if (!sessions[i].ip[0] || (now - sessions[i].ip_t) > 3600) {
             pthread_mutex_unlock(&ssl_mutex);
             struct addrinfo hints = {0}, *res; hints.ai_family = AF_INET;
             if (getaddrinfo(h, NULL, &hints, &res) == 0) {
@@ -80,7 +84,9 @@ static inline SSLConnection create_ssl_connection(const char *h) {
                 freeaddrinfo(res);
             } else {
                 pthread_mutex_lock(&ssl_mutex);
-                if (!sessions[i].ip[0]) { pthread_mutex_unlock(&ssl_mutex); close(s); return (SSLConnection){NULL, -1}; }
+                if (!sessions[i].ip[0]) {
+                    pthread_mutex_unlock(&ssl_mutex); close(s); return (SSLConnection){NULL, -1};
+                }
                 pthread_mutex_unlock(&ssl_mutex);
             }
             pthread_mutex_lock(&ssl_mutex);
@@ -90,7 +96,7 @@ static inline SSLConnection create_ssl_connection(const char *h) {
 
         SSL_SESSION *sess = sessions[i].s;
         if (sess) {
-            if (difftime(time(NULL), sessions[i].t) > 86400) {
+            if ((now - sessions[i].t) > 86400) {
                 SSL_SESSION_free(sessions[i].s); sessions[i].s = sess = NULL;
             } else {
                 SSL_SESSION_up_ref(sess);
@@ -115,6 +121,8 @@ static inline SSLConnection create_ssl_connection(const char *h) {
         if (sess) { SSL_set_session(ssl, sess); SSL_SESSION_free(sess); sess = NULL; }
 
         if (SSL_connect(ssl) <= 0) {
+            int ssl_err = SSL_get_error(ssl, 0);
+            fprintf(stderr, "SSL connect error (code %d) for %s\n", ssl_err, h);
             SSL_free(ssl);
             pthread_mutex_lock(&ssl_mutex);
             if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
@@ -122,10 +130,13 @@ static inline SSLConnection create_ssl_connection(const char *h) {
             ssl = SSL_new(ssl_ctx); 
             if (!ssl) { close(s); continue; }
             SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
-            if (SSL_connect(ssl) <= 0) { SSL_free(ssl); close(s); continue; }
+            if (SSL_connect(ssl) <= 0) { 
+                SSL_free(ssl); close(s); continue; 
+            }
         }
 
         if (SSL_get_verify_result(ssl) != X509_V_OK) {
+            fprintf(stderr, "SSL verify error for %s\n", h);
             SSL_free(ssl); close(s); return (SSLConnection){NULL, -1};
         }
 
@@ -137,6 +148,7 @@ static inline SSLConnection create_ssl_connection(const char *h) {
 
         return (SSLConnection){ssl, s};
     }
+
     return (SSLConnection){NULL, -1};
 }
 
