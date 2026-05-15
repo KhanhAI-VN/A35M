@@ -21,47 +21,44 @@ typedef struct { double close; long long timestamp; } Kline;
 
 static uint8_t model_pools[MAX_CACHED_COINS][49152];
 static size_t model_offs[MAX_CACHED_COINS] = {0};
-static uint8_t active_pool = 0;
 static pthread_mutex_t model_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static inline void model_set_pool(uint8_t idx) { 
-    pthread_mutex_lock(&model_mutex);
-    active_pool = idx % MAX_CACHED_COINS; 
-    pthread_mutex_unlock(&model_mutex);
-}
-
-static inline void* model_alloc(size_t sz) {
+static inline void* model_alloc(uint8_t pool_idx, size_t sz) {
     pthread_mutex_lock(&model_mutex);
     if (sz > 49152) { pthread_mutex_unlock(&model_mutex); return NULL; }
     sz = (sz + 7) & ~7;
-    size_t *offs = model_offs + active_pool;
-    if (*offs + sz > sizeof(model_pools[0])) { pthread_mutex_unlock(&model_mutex); return NULL; }
-    uint8_t *p = model_pools[active_pool] + *offs;
-    *offs += sz;
+    uint8_t idx = pool_idx % MAX_CACHED_COINS;
+    if (model_offs[idx] + sz > sizeof(model_pools[0])) { pthread_mutex_unlock(&model_mutex); return NULL; }
+    uint8_t *p = model_pools[idx] + model_offs[idx];
+    model_offs[idx] += sz;
     pthread_mutex_unlock(&model_mutex);
     return p;
 }
 
-static inline Model* load_model(const uint8_t *b, size_t sz) {
+static inline Model* load_model(uint8_t pool_idx, const uint8_t *b, size_t sz) {
     if (sz < 12 || memcmp(b, "A35M", 4)) return NULL;
-    model_offs[active_pool] = 0;
-#define _CHECK(n) if ((size_t)(p - b) + (n) > sz) { model_offs[active_pool] = 0; return NULL; }
-#define _ALLOC(ptr, n) do { if (!((ptr) = model_alloc(n))) { model_offs[active_pool] = 0; return NULL; } } while(0)
+    uint8_t idx = pool_idx % MAX_CACHED_COINS;
+    pthread_mutex_lock(&model_mutex);
+    model_offs[idx] = 0;
+    pthread_mutex_unlock(&model_mutex);
+
+#define _CHECK(n) if ((size_t)(p - b) + (n) > sz) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; }
+#define _ALLOC(ptr, n) do { if (!((ptr) = model_alloc(pool_idx, n))) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; } } while(0)
     Model *m; _ALLOC(m, sizeof(Model));
     const uint8_t *p = b + 8;
     _CHECK(4); memcpy(&m->num_tensors, p, 4); p += 4;
-    if (m->num_tensors > 100) { model_offs[active_pool] = 0; return NULL; } // Sanity check
+    if (m->num_tensors > 100) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; } // Sanity check
     _ALLOC(m->tensors, sizeof(Tensor) * m->num_tensors);
     for (uint32_t i = 0; i < m->num_tensors; i++) {
         uint16_t nl; _CHECK(2); memcpy(&nl, p, 2); p += 2;
         _CHECK(nl); _ALLOC(m->tensors[i].name, nl + 1); memcpy(m->tensors[i].name, p, nl); m->tensors[i].name[nl] = 0; p += nl;
         _CHECK(1); m->tensors[i].num_dims = *p++;
-        if (m->tensors[i].num_dims == 0 || m->tensors[i].num_dims > 8) { model_offs[active_pool] = 0; return NULL; }
+        if (m->tensors[i].num_dims == 0 || m->tensors[i].num_dims > 8) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; }
         _CHECK(4 * m->tensors[i].num_dims); _ALLOC(m->tensors[i].dims, 4 * m->tensors[i].num_dims); 
         memcpy(m->tensors[i].dims, p, 4 * m->tensors[i].num_dims); p += 4 * m->tensors[i].num_dims;
         _CHECK(5); p++; // skip padding
         memcpy(&m->tensors[i].data_len, p, 4); p += 4;
-        if (m->tensors[i].data_len == 0 || m->tensors[i].data_len > 8192) { model_offs[active_pool] = 0; return NULL; }
+        if (m->tensors[i].data_len == 0 || m->tensors[i].data_len > 8192) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; }
         _CHECK(4 * m->tensors[i].data_len); _ALLOC(m->tensors[i].data, 4 * m->tensors[i].data_len); 
         memcpy(m->tensors[i].data, p, 4 * m->tensors[i].data_len); p += 4 * m->tensors[i].data_len;
     }

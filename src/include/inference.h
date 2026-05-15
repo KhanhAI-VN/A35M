@@ -15,7 +15,7 @@ static pthread_mutex_t cache_mutex   = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t scratch_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Static scratch buffers — reused every call, never freed, no heap fragmentation. */
-static uint8_t s_model_buf[32768];
+static uint8_t s_model_buf[49152];
 static Kline   s_kline_buf[SEQ_LEN + 2];
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
@@ -39,10 +39,10 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
             if (n >= limit) break;
             cJSON *ts = cJSON_GetArrayItem(item, 0);
             cJSON *cl = cJSON_GetArrayItem(item, 4);
-            if (ts && cl && cl->valuestring) {
+            if (ts && cl && cl->valuestring && cl->valuestring[0]) {
                 out[n].timestamp = (long long)ts->valuedouble;
                 out[n].close = atof(cl->valuestring);
-                n++;
+                if (out[n].close > 0) n++; // Only count valid positive prices
             }
         }
         cJSON_Delete(root);
@@ -128,18 +128,17 @@ static inline PredictionResult run_prediction(const char *coin) {
         pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
         if (should_update_cache(cache)) {
+            uint8_t pool_idx = (uint8_t)(cache - caches);
             if (m_len > 0) {
-                model_set_pool((int)(cache - caches));
-                cache->model = load_model(s_model_buf, m_len);
+                cache->model = load_model(pool_idx, s_model_buf, m_len);
             }
-            pthread_mutex_unlock(&scratch_mutex);
 
             if (!cache->model) {
                 PredictionResult res = {0}; 
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
                 strncpy(res.error_msg, "Model missing", sizeof(res.error_msg) - 1);
                 res.error_msg[sizeof(res.error_msg) - 1] = 0;
-                pthread_mutex_unlock(&scratch_mutex); // FIX: Ensure scratch_mutex is unlocked
+                pthread_mutex_unlock(&scratch_mutex);
                 pthread_mutex_unlock(&cache_mutex);
                 return res;
             }
@@ -171,6 +170,7 @@ static inline PredictionResult run_prediction(const char *coin) {
                     cache->input[i] = (c1 > 0 && c2 > 0) ? logf(c2 / c1) : 0;
                 }
             }
+            pthread_mutex_unlock(&scratch_mutex);
 
             if (cache->kline_count >= SEQ_LEN + 2) {
                 float local_input[SEQ_LEN];
