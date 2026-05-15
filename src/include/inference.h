@@ -4,7 +4,8 @@
 #include "models.h"
 #include "cache.h"
 #include "openSSL.h"
-#include "cJSON.h"
+#include "../../3libs/cJSON.h"
+#include "../../3libs/sds.h"
 #include <sys/time.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -16,11 +17,15 @@
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
     if (!c.ssl) return 0;
-    char req[256], *buf = malloc(131072);
+    char *buf = malloc(131072);
     if (!buf) { cleanup_ssl_connection(c); return 0; }
     int n = 0, len, pos = 0;
-    snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
-    if (SSL_write(c.ssl, req, (int)strlen(req)) <= 0) { free(buf); cleanup_ssl_connection(c); return 0; }
+    sds req = sdscatprintf(sdsempty(),
+        "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n",
+        symbol, limit, BINANCE_HOST);
+    if (!req) { free(buf); cleanup_ssl_connection(c); return 0; }
+    if (SSL_write(c.ssl, req, (int)sdslen(req)) <= 0) { sdsfree(req); free(buf); cleanup_ssl_connection(c); return 0; }
+    sdsfree(req);
     while (pos < 131071 && (len = SSL_read(c.ssl, buf + pos, 131071 - pos)) > 0) pos += len;
     buf[pos] = 0;
     cleanup_ssl_connection(c);
@@ -50,10 +55,14 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
 static inline int download_model_from_github(const char *coin, uint8_t *out, int sz) {
     SSLConnection c = create_ssl_connection("raw.githubusercontent.com");
     if (!c.ssl) return 0;
-    char req[256], *b;
+    char *b;
     int n = 0, r, h = 0;
-    snprintf(req, 256, "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n", coin);
-    if (SSL_write(c.ssl, req, (int)strlen(req)) <= 0) { cleanup_ssl_connection(c); return 0; }
+    sds req = sdscatprintf(sdsempty(),
+        "GET /KhanhAI-VN/Test/main/%s.bin HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n",
+        coin);
+    if (!req) { cleanup_ssl_connection(c); return 0; }
+    if (SSL_write(c.ssl, req, (int)sdslen(req)) <= 0) { sdsfree(req); cleanup_ssl_connection(c); return 0; }
+    sdsfree(req);
     while (n < sz - 1 && (r = SSL_read(c.ssl, out + n, sz - 1 - n)) > 0) {
         n += r; out[n] = 0;
         if (!h && (b = strstr((char*)out, "\r\n\r\n"))) {
@@ -172,9 +181,10 @@ static inline PredictionResult run_prediction(const char *coin) {
 static inline void trigger_github_retrain(const char *token) {
     SSLConnection c = create_ssl_connection("api.github.com");
     if (!c.ssl) return;
-    char req[1024], res[1024];
+    char res[1024];
     const char *body = "{\"ref\":\"main\"}";
-    int req_len = snprintf(req, sizeof(req), 
+    /* Use SDS to build request — token can be any length, no overflow risk */
+    sds req = sdscatprintf(sdsempty(),
         "POST /repos/KhanhAI-VN/Test/actions/workflows/retrain.yml/dispatches HTTP/1.1\r\n"
         "Host: api.github.com\r\n"
         "Accept: application/vnd.github+json\r\n"
@@ -185,8 +195,9 @@ static inline void trigger_github_retrain(const char *token) {
         "Content-Length: %zu\r\n"
         "Connection: close\r\n\r\n"
         "%s", token, strlen(body), body);
-    if (req_len >= 0 && req_len < (int)sizeof(req)) {
+    if (req) {
         send_http_request(&c, req, res, sizeof(res));
+        sdsfree(req);
     }
     cleanup_ssl_connection(c);
 }
