@@ -35,6 +35,7 @@ static int new_session_cb(SSL *s, SSL_SESSION *sess) {
     const char *h = SSL_get_servername(s, TLSEXT_NAMETYPE_host_name);
     if (!h) return 0;
     int i = get_host_index(h);
+    if (i < 0) return 0;
 
     pthread_mutex_lock(&ssl_mutex);
     if (sessions[i].s) SSL_SESSION_free(sessions[i].s);

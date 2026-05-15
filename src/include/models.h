@@ -6,6 +6,7 @@
 #include <math.h>
 #include <pthread.h>
 #include "../../3libs/stb_sprintf.h"
+#include "../../3libs/hashmap.h"
 
 #define MAX_CACHED_COINS 10
 #define SEQ_LEN 365
@@ -16,13 +17,24 @@
 #define N_P ((SEQ_LEN + (STRIDE - (SEQ_LEN - PATCH_LEN) % STRIDE) % STRIDE - PATCH_LEN) / STRIDE + 1)
 
 typedef struct { char *name; uint32_t *dims; uint8_t num_dims; float *data; uint32_t data_len; } Tensor;
-typedef struct { uint32_t version, num_tensors; Tensor *tensors; } Model;
+typedef struct { uint32_t version, num_tensors; uint8_t pool_idx; Tensor *tensors; } Model;
+typedef struct { const char *name; Tensor *ptr; } TensorEntry;
 typedef struct { float mean, stdev; } RevINStats;
 typedef struct { double close; long long timestamp; } Kline;
 
 static uint8_t model_pools[MAX_CACHED_COINS][49152];
 static size_t model_offs[MAX_CACHED_COINS] = {0};
+static struct hashmap *model_indices[MAX_CACHED_COINS] = {NULL};
 static pthread_mutex_t model_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static uint64_t tensor_hash(const void *item, uint64_t s0, uint64_t s1) {
+    return hashmap_sip(((const TensorEntry*)item)->name,
+                       strlen(((const TensorEntry*)item)->name), s0, s1);
+}
+static int tensor_cmp(const void *a, const void *b, void *u) {
+    (void)u;
+    return strcmp(((const TensorEntry*)a)->name, ((const TensorEntry*)b)->name);
+}
 
 static inline void* model_alloc(uint8_t pool_idx, size_t sz) {
     pthread_mutex_lock(&model_mutex);
@@ -41,11 +53,13 @@ static inline Model* load_model(uint8_t pool_idx, const uint8_t *b, size_t sz) {
     uint8_t idx = pool_idx % MAX_CACHED_COINS;
     pthread_mutex_lock(&model_mutex);
     model_offs[idx] = 0;
+    if (model_indices[idx]) { hashmap_free(model_indices[idx]); model_indices[idx] = NULL; }
     pthread_mutex_unlock(&model_mutex);
 
 #define _CHECK(n) if ((size_t)(p - b) + (n) > sz) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; }
 #define _ALLOC(ptr, n) do { if (!((ptr) = model_alloc(pool_idx, n))) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; } } while(0)
     Model *m; _ALLOC(m, sizeof(Model));
+    m->pool_idx = idx;
     const uint8_t *p = b + 8;
     _CHECK(4); memcpy(&m->num_tensors, p, 4); p += 4;
     if (m->num_tensors > 100) { pthread_mutex_lock(&model_mutex); model_offs[idx] = 0; pthread_mutex_unlock(&model_mutex); return NULL; } // Sanity check
@@ -65,16 +79,25 @@ static inline Model* load_model(uint8_t pool_idx, const uint8_t *b, size_t sz) {
     }
 #undef _CHECK
 #undef _ALLOC
+    /* Build O(1) lookup index */
+    struct hashmap *hm = hashmap_new(sizeof(TensorEntry), m->num_tensors,
+                                    0, 0, tensor_hash, tensor_cmp, NULL, NULL);
+    if (hm) {
+        for (uint32_t i = 0; i < m->num_tensors; i++) {
+            TensorEntry e = {m->tensors[i].name, &m->tensors[i]};
+            hashmap_set(hm, &e);
+        }
+        pthread_mutex_lock(&model_mutex);
+        model_indices[idx] = hm;
+        pthread_mutex_unlock(&model_mutex);
+    }
     return m;
 }
 
 static inline Tensor* get_t(Model *m, const char *n) {
-    for (uint32_t i = 0; i < m->num_tensors; i++) {
-        if (!strcmp(m->tensors[i].name, n)) {
-            return &m->tensors[i];
-        }
-    }
-    return NULL;
+    TensorEntry key = {n, NULL};
+    const TensorEntry *e = hashmap_get(model_indices[m->pool_idx], &key);
+    return e ? e->ptr : NULL;
 }
 
 static inline Tensor* get_tp(Model *m, const char *pre, const char *post) {
