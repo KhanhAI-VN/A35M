@@ -30,6 +30,7 @@ typedef struct {
     int last_sync_day;
     int last_sync_year;
     Model* model;
+    pthread_mutex_t coin_mutex;
 } CoinCache;
 
 static CoinCache caches[MAX_CACHED_COINS];
@@ -58,6 +59,7 @@ static inline CoinCache* get_coin_cache(const char *coin) {
     strncpy(c->coin, coin, sizeof(c->coin) - 1);
     c->coin[sizeof(c->coin) - 1] = 0;
     c->last_sync_day = -1;
+    pthread_mutex_init(&c->coin_mutex, NULL);
     pthread_mutex_unlock(&cache_internal_mutex);
     return c;
 }

@@ -68,14 +68,9 @@ static inline Model* load_model(uint8_t pool_idx, const uint8_t *b, size_t sz) {
 }
 
 static inline Tensor* get_t(Model *m, const char *n) {
-    static __thread const char *last_n = NULL;
-    static __thread Tensor *last_t = NULL;
-    if (last_n && !strcmp(last_n, n)) return last_t;
     for (uint32_t i = 0; i < m->num_tensors; i++) {
         if (!strcmp(m->tensors[i].name, n)) {
-            last_n = m->tensors[i].name;
-            last_t = &m->tensors[i];
-            return last_t;
+            return &m->tensors[i];
         }
     }
     return NULL;

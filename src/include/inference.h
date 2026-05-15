@@ -11,7 +11,7 @@
 
 #define BINANCE_HOST "api.binance.com"
 
-static pthread_mutex_t cache_mutex   = PTHREAD_MUTEX_INITIALIZER;
+// Per-coin mutex is now located inside CoinCache struct
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
@@ -24,6 +24,7 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
     while (pos < 131071 && (len = SSL_read(c.ssl, buf + pos, 131071 - pos)) > 0) pos += len;
     buf[pos] = 0;
     cleanup_ssl_connection(c);
+    if (pos >= 131071) { free(buf); return 0; }
     char *body = strstr(buf, "\r\n\r\n");
     if (!body) { free(buf); return 0; }
     body += 4;
@@ -62,7 +63,13 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
             h = (int)((b + 4) - (char*)out);
             if (cl_hdr && cl_hdr < b) {
                 char *cl_val = strchr(cl_hdr, ':');
-                if (cl_val && (atoi(cl_val + 1) > (sz - h))) { h = -1; break; }
+                if (cl_val) {
+                    cl_val++;
+                    while (*cl_val == ' ') cl_val++;
+                    if (*cl_val >= '0' && *cl_val <= '9') {
+                        if (atoi(cl_val) > (sz - h)) { h = -1; break; }
+                    }
+                }
             }
         }
     }
@@ -81,11 +88,11 @@ static inline PredictionResult run_prediction(const char *coin) {
     }
     char symbol[32]; snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
     
-    pthread_mutex_lock(&cache_mutex);
     CoinCache *cache = get_coin_cache(cname);
+    pthread_mutex_lock(&cache->coin_mutex);
     
     if (should_update_cache(cache)) {
-        pthread_mutex_unlock(&cache_mutex);
+        pthread_mutex_unlock(&cache->coin_mutex);
         
         // Allocate local buffers for downloading data to avoid shared-state bottlenecks
         uint8_t *l_model_buf = malloc(49152);
@@ -98,8 +105,8 @@ static inline PredictionResult run_prediction(const char *coin) {
         int m_len = download_model_from_github(cname, l_model_buf, 49152);
         int f_count = fetch_binance_data(symbol, l_kline_buf, SEQ_LEN + 2);
         
-        pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
+        pthread_mutex_lock(&cache->coin_mutex);
         if (should_update_cache(cache)) {
             uint8_t pool_idx = (uint8_t)(cache - caches);
             if (m_len > 0) cache->model = load_model(pool_idx, l_model_buf, m_len);
@@ -108,7 +115,7 @@ static inline PredictionResult run_prediction(const char *coin) {
                 PredictionResult res = {0};
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
                 snprintf(res.error_msg, sizeof(res.error_msg), "%s", !cache->model ? "Model error" : "Data error");
-                pthread_mutex_unlock(&cache_mutex);
+                pthread_mutex_unlock(&cache->coin_mutex);
                 free(l_model_buf); free(l_kline_buf);
                 return res;
             }
@@ -125,13 +132,11 @@ static inline PredictionResult run_prediction(const char *coin) {
             float local_input[SEQ_LEN];
             memcpy(local_input, cache->input, sizeof(local_input));
             Model *m = cache->model;
-            pthread_mutex_unlock(&cache_mutex);
 
             struct timeval start, end; gettimeofday(&start, NULL);
             float p_val = predict(m, local_input);
             gettimeofday(&end, NULL);
 
-            pthread_mutex_lock(&cache_mutex);
             cache->pred_log_diff = p_val;
             cache->last_res.success = !isnan(p_val) && !isinf(p_val);
             cache->last_res.inference_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
@@ -145,8 +150,11 @@ static inline PredictionResult run_prediction(const char *coin) {
     }
 
     // Secondary fetch only if needed for current price update (not full sync)
+    pthread_mutex_unlock(&cache->coin_mutex);
     Kline latest[2] = {0};
     int n = fetch_binance_data(symbol, latest, 2);
+    pthread_mutex_lock(&cache->coin_mutex);
+    
     if (n == 2) {
         cache->last_res.last_price = (float)latest[1].close;
         float yesterday_close = (float)latest[0].close;
@@ -157,7 +165,7 @@ static inline PredictionResult run_prediction(const char *coin) {
 
     PredictionResult res = cache->last_res;
     memcpy(res.coin, cache->coin, sizeof(res.coin));
-    pthread_mutex_unlock(&cache_mutex);
+    pthread_mutex_unlock(&cache->coin_mutex);
     return res;
 }
 
