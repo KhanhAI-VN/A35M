@@ -48,13 +48,12 @@ static inline Model* load_model(const uint8_t *b, size_t sz) {
         uint16_t nl; _CHECK(2); memcpy(&nl, p, 2); p += 2;
         _CHECK(nl); _ALLOC(m->tensors[i].name, nl + 1); memcpy(m->tensors[i].name, p, nl); m->tensors[i].name[nl] = 0; p += nl;
         _CHECK(1); m->tensors[i].num_dims = *p++;
-        if (m->tensors[i].num_dims > 8) { model_offs[active_pool] = 0; return NULL; } // Sanity check
+        if (m->tensors[i].num_dims == 0 || m->tensors[i].num_dims > 8) { model_offs[active_pool] = 0; return NULL; }
         _CHECK(4 * m->tensors[i].num_dims); _ALLOC(m->tensors[i].dims, 4 * m->tensors[i].num_dims); 
         memcpy(m->tensors[i].dims, p, 4 * m->tensors[i].num_dims); p += 4 * m->tensors[i].num_dims;
-        _CHECK(5); // num_dims padding byte + data_len
-        p++; // skip padding
+        _CHECK(5); p++; // skip padding
         memcpy(&m->tensors[i].data_len, p, 4); p += 4;
-        if (m->tensors[i].data_len > 8192) { model_offs[active_pool] = 0; return NULL; } // Sanity check matching 32KB pool
+        if (m->tensors[i].data_len == 0 || m->tensors[i].data_len > 8192) { model_offs[active_pool] = 0; return NULL; }
         _CHECK(4 * m->tensors[i].data_len); _ALLOC(m->tensors[i].data, 4 * m->tensors[i].data_len); 
         memcpy(m->tensors[i].data, p, 4 * m->tensors[i].data_len); p += 4 * m->tensors[i].data_len;
     }
@@ -116,14 +115,14 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
            *w2 = get_tp(m, pre, "_patch_conv_se_fc_2_weight"), *b2 = get_tp(m, pre, "_patch_conv_se_fc_2_bias");
     if (!w1 || !b1 || !w2 || !b2) return;
 
-    for (int i = 0; i < (int)w1->dims[0]; i++) { 
+    for (int i = 0; i < (int)w1->dims[0] && i < D_MODEL; i++) { 
         hid[i] = b1->data[i]; 
         for (int j = 0; j < D_MODEL; j++) hid[i] += avg[j] * w1->data[i * D_MODEL + j]; 
         if (hid[i] < 0) hid[i] = 0; // ReLU
     }
     for (int i = 0; i < D_MODEL; i++) {
         float sc = b2->data[i]; 
-        for (int j = 0; j < (int)w1->dims[0]; j++) sc += hid[j] * w2->data[i * w1->dims[0] + j];
+        for (int j = 0; j < (int)w1->dims[0] && j < D_MODEL; j++) sc += hid[j] * w2->data[i * w1->dims[0] + j];
         sc = 1 / (1 + expf(-sc)); // Sigmoid
         for (int p = 0; p < N_P; p++) feat[i * N_P + p] *= sc;
     }

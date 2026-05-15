@@ -90,6 +90,11 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
 
 static inline PredictionResult run_prediction(const char *coin) {
     const char *cname = coin ? coin : "BTC";
+    for (const char *p = cname; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9'))) {
+            return (PredictionResult){.success = 0, .coin = "", .error_msg = "Invalid symbol"};
+        }
+    }
     char symbol[32]; snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
     Kline latest[2] = {0};
     int n = fetch_binance_data(symbol, latest, 2);
@@ -114,7 +119,7 @@ static inline PredictionResult run_prediction(const char *coin) {
 
         int incremental = (days_missing == 1);
         int partial     = (days_missing >= 2 && days_missing <= SEQ_LEN);
-        int need_model  = (cache->model == NULL);
+        int need_model  = 1; 
 
         pthread_mutex_unlock(&cache_mutex);
 
@@ -135,8 +140,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         if (should_update_cache(cache)) {
             if (m_len > 0) {
                 model_set_pool(pool_idx);
-                Model *m = load_model(s_model_buf, m_len);
-                if (m) cache->model = m;
+                cache->model = load_model(s_model_buf, m_len);
             }
             if (!cache->model) {
                 PredictionResult res = {0}; 
