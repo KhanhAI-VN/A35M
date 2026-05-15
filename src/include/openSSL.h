@@ -120,19 +120,15 @@ static inline SSLConnection create_ssl_connection(const char *h) {
         SSL_set_tlsext_host_name(ssl, h);
         if (sess) { SSL_set_session(ssl, sess); SSL_SESSION_free(sess); sess = NULL; }
 
-        if (SSL_connect(ssl) <= 0) {
-            int ssl_err = SSL_get_error(ssl, 0);
+        int ret = SSL_connect(ssl);
+        if (ret <= 0) {
+            int ssl_err = SSL_get_error(ssl, ret);
             fprintf(stderr, "SSL connect error (code %d) for %s\n", ssl_err, h);
             SSL_free(ssl);
             pthread_mutex_lock(&ssl_mutex);
             if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
             pthread_mutex_unlock(&ssl_mutex);
-            ssl = SSL_new(ssl_ctx); 
-            if (!ssl) { close(s); continue; }
-            SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
-            if (SSL_connect(ssl) <= 0) { 
-                SSL_free(ssl); close(s); continue; 
-            }
+            close(s); continue; 
         }
 
         if (SSL_get_verify_result(ssl) != X509_V_OK) {

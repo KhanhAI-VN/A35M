@@ -136,16 +136,16 @@ static inline PredictionResult run_prediction(const char *coin) {
             int limit = partial ? (days_missing + 1) : (SEQ_LEN + 2);
             f_count = fetch_binance_data(symbol, s_kline_buf, limit);
         }
-        pthread_mutex_unlock(&scratch_mutex);
 
         pthread_mutex_lock(&cache_mutex);
         cache = get_coin_cache(cname);
         if (should_update_cache(cache)) {
-            int pool_idx = (int)(cache - caches);
             if (m_len > 0) {
-                model_set_pool(pool_idx);
+                model_set_pool((int)(cache - caches));
                 cache->model = load_model(s_model_buf, m_len);
             }
+            pthread_mutex_unlock(&scratch_mutex);
+
             if (!cache->model) {
                 PredictionResult res = {0}; 
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
@@ -183,15 +183,23 @@ static inline PredictionResult run_prediction(const char *coin) {
             }
 
             if (cache->kline_count >= SEQ_LEN + 2) {
+                float local_input[SEQ_LEN];
+                memcpy(local_input, cache->input, sizeof(local_input));
+                Model *m = cache->model;
+                pthread_mutex_unlock(&cache_mutex);
+
                 struct timeval start, end; gettimeofday(&start, NULL);
-                cache->pred_log_diff = predict(cache->model, cache->input);
+                float p_val = predict(m, local_input);
                 gettimeofday(&end, NULL);
-                cache->last_res.success = !isnan(cache->pred_log_diff) && !isinf(cache->pred_log_diff);
+
+                pthread_mutex_lock(&cache_mutex);
+                cache->pred_log_diff = p_val;
+                cache->last_res.success = !isnan(p_val) && !isinf(p_val);
                 cache->last_res.inference_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
-                cache->last_res.pred_change_pct = (expf(cache->pred_log_diff) - 1.0f) * 100.0f;
+                cache->last_res.pred_change_pct = cache->last_res.success ? (expf(p_val) - 1.0f) * 100.0f : 0;
+                
                 time_t pred_ts = (n == 2 ? latest[1].timestamp : cache->klines[cache->kline_count-1].timestamp) / 1000 + 86400;
-                struct tm t_pred;
-                gmtime_r(&pred_ts, &t_pred);
+                struct tm t_pred; gmtime_r(&pred_ts, &t_pred);
                 strftime(cache->last_res.date, sizeof(cache->last_res.date), "%Y-%m-%d", &t_pred);
                 update_cache_day(cache);
             } else {
@@ -201,7 +209,8 @@ static inline PredictionResult run_prediction(const char *coin) {
                 pthread_mutex_unlock(&cache_mutex);
                 return res;
             }
-
+        } else {
+            pthread_mutex_unlock(&scratch_mutex); // Handle case where should_update_cache became false
         }
     }
 

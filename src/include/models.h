@@ -95,8 +95,7 @@ static inline float revin_denorm(float x, RevINStats *s, Model *m) {
 }
 
 static inline void series_decomp(float *x, float *res, float *tr) {
-    float sum = 0;
-    for (int m = 0; m < KERNEL_SIZE; m++) sum += x[0];
+    float sum = x[0] * KERNEL_SIZE;
     for (int i = 0; i < SEQ_LEN; i++) {
         tr[i] = sum / KERNEL_SIZE;
         res[i] = x[i] - tr[i];
