@@ -5,6 +5,7 @@
 #include <time.h>
 #include <string.h>
 #include <limits.h>
+#include <pthread.h>
 
 typedef struct {
     char coin[16];
@@ -33,10 +34,17 @@ typedef struct {
 
 static CoinCache caches[MAX_CACHED_COINS];
 static int num_cached_coins = 0;
+static pthread_mutex_t cache_internal_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static inline CoinCache* get_coin_cache(const char *coin) {
+    pthread_mutex_lock(&cache_internal_mutex);
     int i, oi = 0, ot = INT_MAX;
-    for (i = 0; i < num_cached_coins; i++) if (!strcmp(caches[i].coin, coin)) return &caches[i];
+    for (i = 0; i < num_cached_coins; i++) {
+        if (!strcmp(caches[i].coin, coin)) {
+            pthread_mutex_unlock(&cache_internal_mutex);
+            return &caches[i];
+        }
+    }
     if (num_cached_coins < MAX_CACHED_COINS) i = num_cached_coins++;
     else {
         for (int j = 0; j < MAX_CACHED_COINS; j++) {
@@ -50,6 +58,7 @@ static inline CoinCache* get_coin_cache(const char *coin) {
     strncpy(c->coin, coin, sizeof(c->coin) - 1);
     c->coin[sizeof(c->coin) - 1] = 0;
     c->last_sync_day = -1;
+    pthread_mutex_unlock(&cache_internal_mutex);
     return c;
 }
 

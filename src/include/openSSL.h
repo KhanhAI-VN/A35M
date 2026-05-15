@@ -27,7 +27,7 @@ static SSL_CTX *ssl_ctx = NULL;
 
 static int get_host_index(const char *h) {
     for (int i = 0; i < 3; i++) if (!strcmp(h, hosts[i])) return i;
-    return 0;
+    return -1;
 }
 
 static int new_session_cb(SSL *s, SSL_SESSION *sess) {
@@ -61,6 +61,7 @@ static inline void cleanup_ssl_connection(SSLConnection c) {
 static inline SSLConnection create_ssl_connection(const char *h) {
     pthread_once(&ssl_init_once, init_ssl_library);
     int i = get_host_index(h);
+    if (i < 0) return (SSLConnection){NULL, -1};
 
     for (int retry = 0; retry <= 1; retry++) {
         int s = socket(AF_INET, SOCK_STREAM, 0);

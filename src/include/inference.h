@@ -4,6 +4,7 @@
 #include "models.h"
 #include "cache.h"
 #include "openSSL.h"
+#include "cJSON.h"
 #include <sys/time.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -20,46 +21,33 @@ static Kline   s_kline_buf[SEQ_LEN + 2];
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     SSLConnection c = create_ssl_connection(BINANCE_HOST);
     if (!c.ssl) return 0;
-    char req[256], buf[8193], *p, *s1, *e1;
-    int n = 0, len, pos = 0, h = 0;
+    char req[256], *buf = malloc(131072); // Larger buffer for JSON
+    if (!buf) { cleanup_ssl_connection(c); return 0; }
+    int n = 0, len, pos = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
-    if (SSL_write(c.ssl, req, (int)strlen(req)) <= 0) { cleanup_ssl_connection(c); return 0; }
-    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8192 - pos)) > 0) {
-        pos += len; buf[pos] = 0; p = buf;
-        if (!h) {
-            if (!(p = strstr(buf, "\r\n\r\n"))) {
-                if (pos >= 8192) { cleanup_ssl_connection(c); return 0; }
-                continue;
-            }
-            char *status = strstr(buf, " ");
-            if (!status || atoi(status + 1) != 200) { cleanup_ssl_connection(c); return 0; }
-            p += 4; h = 1;
-        }
-        while (n < limit && p < buf + pos && (s1 = strstr(p, "["))) {
-            if (s1[1] == '[') { p = s1 + 1; continue; }
-            if (!(e1 = strstr(s1, "]"))) break;
-            *e1 = 0; // Temporarily terminate string for safer parsing
-            char *ptr = s1 + 1;
-            out[n].timestamp = atoll(ptr);
-            int commas = 0;
-            for (char *cptr = s1 + 1; cptr < e1; cptr++) {
-                if (*cptr == ',') {
-                    if (++commas == 4) {
-                        while (cptr < e1 && (*cptr == ',' || *cptr == ' ' || *cptr == '\"')) cptr++;
-                        out[n].close = atof(cptr);
-                        n++;
-                        break;
-                    }
-                }
-            }
-            p = e1 + 1;
-        }
-        int rem = (int)(buf + pos - p);
-        if (rem > 0 && rem < 8192) memmove(buf, p, rem);
-        else rem = 0;
-        pos = rem;
-    }
+    if (SSL_write(c.ssl, req, (int)strlen(req)) <= 0) { free(buf); cleanup_ssl_connection(c); return 0; }
+    while (pos < 131071 && (len = SSL_read(c.ssl, buf + pos, 131071 - pos)) > 0) pos += len;
+    buf[pos] = 0;
     cleanup_ssl_connection(c);
+    char *body = strstr(buf, "\r\n\r\n");
+    if (!body) { free(buf); return 0; }
+    body += 4;
+    cJSON *root = cJSON_Parse(body);
+    if (root) {
+        cJSON *item;
+        cJSON_ArrayForEach(item, root) {
+            if (n >= limit) break;
+            cJSON *ts = cJSON_GetArrayItem(item, 0);
+            cJSON *cl = cJSON_GetArrayItem(item, 4);
+            if (ts && cl && cl->valuestring) {
+                out[n].timestamp = (long long)ts->valuedouble;
+                out[n].close = atof(cl->valuestring);
+                n++;
+            }
+        }
+        cJSON_Delete(root);
+    }
+    free(buf);
     return n;
 }
 
@@ -151,12 +139,14 @@ static inline PredictionResult run_prediction(const char *coin) {
                 memcpy(res.coin, cache->coin, sizeof(res.coin));
                 strncpy(res.error_msg, "Model missing", sizeof(res.error_msg) - 1);
                 res.error_msg[sizeof(res.error_msg) - 1] = 0;
+                pthread_mutex_unlock(&scratch_mutex); // FIX: Ensure scratch_mutex is unlocked
                 pthread_mutex_unlock(&cache_mutex);
                 return res;
             }
 
             if (incremental) {
                 if (cache->klines[SEQ_LEN].close <= 0 || latest[1].close <= 0) {
+                    pthread_mutex_unlock(&scratch_mutex); // FIX: Ensure scratch_mutex is unlocked
                     pthread_mutex_unlock(&cache_mutex);
                     return (PredictionResult){.success = 0, .coin = "", .error_msg = "Invalid price data"};
                 }

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <pthread.h>
 
 #define MAX_CACHED_COINS 10
 #define SEQ_LEN 365
@@ -21,16 +22,23 @@ typedef struct { double close; long long timestamp; } Kline;
 static uint8_t model_pools[MAX_CACHED_COINS][49152];
 static size_t model_offs[MAX_CACHED_COINS] = {0};
 static uint8_t active_pool = 0;
+static pthread_mutex_t model_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static inline void model_set_pool(uint8_t idx) { active_pool = idx % MAX_CACHED_COINS; }
+static inline void model_set_pool(uint8_t idx) { 
+    pthread_mutex_lock(&model_mutex);
+    active_pool = idx % MAX_CACHED_COINS; 
+    pthread_mutex_unlock(&model_mutex);
+}
 
 static inline void* model_alloc(size_t sz) {
-    if (sz > 49152) return NULL;
+    pthread_mutex_lock(&model_mutex);
+    if (sz > 49152) { pthread_mutex_unlock(&model_mutex); return NULL; }
     sz = (sz + 7) & ~7;
     size_t *offs = model_offs + active_pool;
-    if (*offs + sz > sizeof(model_pools[0])) return NULL;
+    if (*offs + sz > sizeof(model_pools[0])) { pthread_mutex_unlock(&model_mutex); return NULL; }
     uint8_t *p = model_pools[active_pool] + *offs;
     *offs += sz;
+    pthread_mutex_unlock(&model_mutex);
     return p;
 }
 
