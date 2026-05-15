@@ -47,7 +47,8 @@ static inline CoinCache* get_coin_cache(const char *coin) {
     }
     CoinCache *c = &caches[i];
     memset(c, 0, sizeof(CoinCache));
-    strncpy(c->coin, coin, 15);
+    strncpy(c->coin, coin, sizeof(c->coin) - 1);
+    c->coin[sizeof(c->coin) - 1] = 0;
     c->last_sync_day = -1;
     return c;
 }

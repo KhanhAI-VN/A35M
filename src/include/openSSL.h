@@ -97,7 +97,9 @@ static inline SSLConnection create_ssl_connection(const char *h) {
             continue;
         }
 
+        if (!ssl_ctx) { close(s); return (SSLConnection){NULL, -1}; }
         SSL *ssl = SSL_new(ssl_ctx);
+        if (!ssl) { close(s); continue; }
         SSL_set_fd(ssl, s);
         SSL_set_tlsext_host_name(ssl, h);
         if (sess) SSL_set_session(ssl, sess);
@@ -107,8 +109,10 @@ static inline SSLConnection create_ssl_connection(const char *h) {
             pthread_mutex_lock(&ssl_mutex);
             if (sessions[i].s) { SSL_SESSION_free(sessions[i].s); sessions[i].s = NULL; }
             pthread_mutex_unlock(&ssl_mutex);
-            ssl = SSL_new(ssl_ctx); SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
-            if (SSL_connect(ssl) <= 0) { SSL_free(ssl); close(s); return (SSLConnection){NULL, -1}; }
+            ssl = SSL_new(ssl_ctx); 
+            if (!ssl) { close(s); continue; }
+            SSL_set_fd(ssl, s); SSL_set_tlsext_host_name(ssl, h);
+            if (SSL_connect(ssl) <= 0) { SSL_free(ssl); close(s); continue; }
         }
 
         if (SSL_session_reused(ssl)) {
@@ -123,9 +127,11 @@ static inline SSLConnection create_ssl_connection(const char *h) {
 }
 
 static inline int send_http_request(SSLConnection *c, const char *req, char *res, size_t sz) {
-    SSL_write(c->ssl, req, strlen(req));
+    if (!c->ssl) return -1;
+    int r = SSL_write(c->ssl, req, (int)strlen(req));
+    if (r <= 0) return -1;
     int t = 0, n;
-    while (t < (int)sz - 1 && (n = SSL_read(c->ssl, res + t, sz - 1 - t)) > 0) t += n;
+    while (t < (int)sz - 1 && (n = SSL_read(c->ssl, res + t, (int)(sz - 1 - t))) > 0) t += n;
     if (t >= 0) res[t] = 0;
     return t;
 }

@@ -24,7 +24,7 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
     int n = 0, len, pos = 0, h = 0;
     snprintf(req, 256, "GET /api/v3/klines?symbol=%s&interval=1d&limit=%d HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", symbol, limit, BINANCE_HOST);
     SSL_write(c.ssl, req, strlen(req));
-    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8192 - pos)) > 0) {
+    while (n < limit && (len = SSL_read(c.ssl, buf + pos, 8191 - pos)) > 0) {
         pos += len; buf[pos] = 0; p = buf;
         if (!h) {
             if (!(p = strstr(buf, "\r\n\r\n"))) {
@@ -78,14 +78,14 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
 
 static inline PredictionResult run_prediction(const char *coin) {
     const char *cname = coin ? coin : "BTC";
-    char symbol[32]; sprintf(symbol, "%sUSDT", cname);
+    char symbol[32]; snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
     Kline latest[2] = {0};
     int n = fetch_binance_data(symbol, latest, 2);
     if (n < 2) {
         pthread_mutex_lock(&cache_mutex);
         CoinCache *cache = get_coin_cache(cname);
         PredictionResult res = cache->last_res;
-        strcpy(res.coin, cache->coin);
+        memcpy(res.coin, cache->coin, sizeof(res.coin));
         pthread_mutex_unlock(&cache_mutex);
         return res;
     }
@@ -127,8 +127,10 @@ static inline PredictionResult run_prediction(const char *coin) {
                 if (m) cache->model = m;
             }
             if (!cache->model) {
-                PredictionResult res = {0}; strcpy(res.coin, cache->coin);
-                strcpy(res.error_msg, "Model missing");
+                PredictionResult res = {0}; 
+                memcpy(res.coin, cache->coin, sizeof(res.coin));
+                strncpy(res.error_msg, "Model missing", sizeof(res.error_msg) - 1);
+                res.error_msg[sizeof(res.error_msg) - 1] = 0;
                 pthread_mutex_unlock(&cache_mutex);
                 return res;
             }
@@ -173,8 +175,9 @@ static inline PredictionResult run_prediction(const char *coin) {
                 strftime(cache->last_res.date, sizeof(cache->last_res.date), "%Y-%m-%d", &t_pred);
                 update_cache_day(cache);
             } else {
-                PredictionResult res = {0}; strcpy(res.coin, cache->coin);
-                sprintf(res.error_msg, "Data error (%d)", cache->kline_count);
+                PredictionResult res = {0}; 
+                memcpy(res.coin, cache->coin, sizeof(res.coin));
+                snprintf(res.error_msg, sizeof(res.error_msg), "Data error (%d)", cache->kline_count);
                 pthread_mutex_unlock(&cache_mutex);
                 return res;
             }
@@ -183,7 +186,7 @@ static inline PredictionResult run_prediction(const char *coin) {
     }
 
     PredictionResult res = cache->last_res;
-    strcpy(res.coin, cache->coin);
+    memcpy(res.coin, cache->coin, sizeof(res.coin));
     res.last_price = (float)latest[1].close;
     float yesterday_close = (float)latest[0].close;
     res.change_pct = (yesterday_close > 1e-9) ? ((res.last_price - yesterday_close) / yesterday_close) * 100.0f : 0;
