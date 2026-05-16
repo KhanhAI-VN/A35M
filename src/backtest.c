@@ -4,8 +4,9 @@
 #include <time.h>
 #include <string.h>
 #include <stdint.h>
-#define STB_SPRINTF_IMPLEMENTATION
 #include "include/inference.h"
+#define STB_SPRINTF_IMPLEMENTATION
+#include "../3libs/stb_sprintf.h"
 
 // Custom struct for backtesting
 typedef struct { 
@@ -24,7 +25,10 @@ int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit, const char *inter
     int total_fetched = 0;
     long long last_ts = 0;
 
-    CURL *curl = curl_easy_init();
+    static __thread CURL *curl = NULL;
+    if (!curl) {
+        curl = curl_easy_init();
+    }
     if (!curl) return 0;
 
     while (total_fetched < limit) {
@@ -40,11 +44,13 @@ int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit, const char *inter
         }
 
         sds response = sdsempty();
+        curl_easy_reset(curl);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_sds_cb);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "A35M-Engine/1.0");
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK || sdslen(response) == 0) {
@@ -53,35 +59,43 @@ int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit, const char *inter
             break;
         }
 
-        cJSON *root = cJSON_Parse(response);
+        yyjson_doc *doc = yyjson_read(response, sdslen(response), 0);
         sdsfree(response);
 
-        if (!root) break;
+        if (!doc) break;
+        yyjson_val *root = yyjson_doc_get_root(doc);
+        if (!yyjson_is_arr(root)) {
+            yyjson_doc_free(doc);
+            break;
+        }
         
         int n_page = 0;
         OHLC page_data[1000];
         
-        cJSON *item;
-        cJSON_ArrayForEach(item, root) {
+        size_t idx, max;
+        yyjson_val *item;
+        yyjson_arr_foreach(root, idx, max, item) {
             if (n_page >= page_limit) break;
-            cJSON *ts = cJSON_GetArrayItem(item, 0);
-            cJSON *so = cJSON_GetArrayItem(item, 1);
-            cJSON *sh = cJSON_GetArrayItem(item, 2);
-            cJSON *sl = cJSON_GetArrayItem(item, 3);
-            cJSON *sc = cJSON_GetArrayItem(item, 4);
-            cJSON *sv = cJSON_GetArrayItem(item, 5);
+            if (!yyjson_is_arr(item)) continue;
             
-            if (ts && so && sh && sl && sc && sv && sc->valuestring) {
-                page_data[n_page].timestamp = (long long)ts->valuedouble;
-                page_data[n_page].open = atof(so->valuestring);
-                page_data[n_page].high = atof(sh->valuestring);
-                page_data[n_page].low = atof(sl->valuestring);
-                page_data[n_page].close = atof(sc->valuestring);
-                page_data[n_page].volume = atof(sv->valuestring);
+            yyjson_val *ts = yyjson_arr_get(item, 0);
+            yyjson_val *so = yyjson_arr_get(item, 1);
+            yyjson_val *sh = yyjson_arr_get(item, 2);
+            yyjson_val *sl = yyjson_arr_get(item, 3);
+            yyjson_val *sc = yyjson_arr_get(item, 4);
+            yyjson_val *sv = yyjson_arr_get(item, 5);
+            
+            if (ts && so && sh && sl && sc && sv && yyjson_is_str(sc)) {
+                page_data[n_page].timestamp = (long long)yyjson_get_num(ts);
+                page_data[n_page].open = atof(yyjson_get_str(so));
+                page_data[n_page].high = atof(yyjson_get_str(sh));
+                page_data[n_page].low = atof(yyjson_get_str(sl));
+                page_data[n_page].close = atof(yyjson_get_str(sc));
+                page_data[n_page].volume = atof(yyjson_get_str(sv));
                 n_page++;
             }
         }
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
 
         if (n_page == 0) break;
 
@@ -92,7 +106,6 @@ int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit, const char *inter
         last_ts = page_data[0].timestamp; 
         if (n_page < page_limit) break; 
     }
-    curl_easy_cleanup(curl);
     return total_fetched;
 }
 

@@ -4,7 +4,7 @@
 #include "models.h"
 #include "cache.h"
 #include <curl/curl.h>
-#include "../../3libs/cJSON.h"
+#include "../../3libs/yyjson.h"
 #include "../../3libs/sds.h"
 #include "../../3libs/log.h"
 #include "../../3libs/stb_sprintf.h"
@@ -38,7 +38,12 @@ static size_t curl_write_bin_cb(void *contents, size_t size, size_t nmemb, void 
 
 static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) {
     int n = 0;
-    CURL *curl = curl_easy_init();
+    static __thread CURL *curl = NULL;
+    if (!curl) {
+        curl = curl_easy_init();
+    } else {
+        curl_easy_reset(curl);
+    }
     if (!curl) return 0;
     
     char url[256];
@@ -50,9 +55,9 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "A35M-Engine/1.0");
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
     
     CURLcode res = curl_easy_perform(curl);
-    curl_easy_cleanup(curl);
     
     if (res != CURLE_OK || sdslen(response) == 0) {
         log_error("Binance API fetch failed: %s", curl_easy_strerror(res));
@@ -60,27 +65,40 @@ static inline int fetch_binance_data(const char *symbol, Kline *out, int limit) 
         return 0;
     }
     
-    cJSON *root = cJSON_Parse(response);
-    if (root) {
-        cJSON *item;
-        cJSON_ArrayForEach(item, root) {
-            if (n >= limit) break;
-            cJSON *ts = cJSON_GetArrayItem(item, 0);
-            cJSON *cl = cJSON_GetArrayItem(item, 4);
-            if (ts && cl && cl->valuestring && cl->valuestring[0]) {
-                out[n].timestamp = (long long)ts->valuedouble;
-                out[n].close = atof(cl->valuestring);
-                if (out[n].close > 0) n++;
+    yyjson_doc *doc = yyjson_read(response, sdslen(response), 0);
+    if (doc) {
+        yyjson_val *root = yyjson_doc_get_root(doc);
+        if (yyjson_is_arr(root)) {
+            size_t idx, max;
+            yyjson_val *item;
+            yyjson_arr_foreach(root, idx, max, item) {
+                if (n >= limit) break;
+                if (!yyjson_is_arr(item)) continue;
+                yyjson_val *ts = yyjson_arr_get(item, 0);
+                yyjson_val *cl = yyjson_arr_get(item, 4);
+                if (ts && cl && yyjson_is_str(cl)) {
+                    const char *cl_str = yyjson_get_str(cl);
+                    if (cl_str && cl_str[0]) {
+                        out[n].timestamp = (long long)yyjson_get_num(ts);
+                        out[n].close = atof(cl_str);
+                        if (out[n].close > 0) n++;
+                    }
+                }
             }
         }
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
     }
     sdsfree(response);
     return n;
 }
 
 static inline int download_model_from_github(const char *coin, uint8_t *out, int sz) {
-    CURL *curl = curl_easy_init();
+    static __thread CURL *curl = NULL;
+    if (!curl) {
+        curl = curl_easy_init();
+    } else {
+        curl_easy_reset(curl);
+    }
     if (!curl) return 0;
     
     char url[256];
@@ -94,12 +112,12 @@ static inline int download_model_from_github(const char *coin, uint8_t *out, int
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "A35M-Engine/1.0");
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
     
     CURLcode res = curl_easy_perform(curl);
     
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_easy_cleanup(curl);
     
     if (res != CURLE_OK || http_code != 200) {
         log_error("Failed to download model for %s (curl: %s, http: %ld)", coin, curl_easy_strerror(res), http_code);
@@ -206,7 +224,12 @@ static inline PredictionResult run_prediction(const char *coin) {
 }
 
 static inline void trigger_github_retrain(const char *token) {
-    CURL *curl = curl_easy_init();
+    static __thread CURL *curl = NULL;
+    if (!curl) {
+        curl = curl_easy_init();
+    } else {
+        curl_easy_reset(curl);
+    }
     if (!curl) return;
     
     const char *url = "https://api.github.com/repos/KhanhAI-VN/Test/actions/workflows/retrain.yml/dispatches";
@@ -230,6 +253,7 @@ static inline void trigger_github_retrain(const char *token) {
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_sds_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
     
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
@@ -245,7 +269,6 @@ static inline void trigger_github_retrain(const char *token) {
     }
     
     curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
     sdsfree(response);
 }
 
