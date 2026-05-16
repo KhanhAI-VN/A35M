@@ -14,6 +14,8 @@
     --border: rgba(255, 255, 255, 0.06);
     --border-hover: rgba(255, 255, 255, 0.12);
     --radius: 8px;
+    --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -135,11 +137,12 @@ body::after {
     width: auto;
     filter: brightness(0) invert(1);
     opacity: 0.9;
-    transition: opacity 0.3s ease;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
 .logo:hover {
     opacity: 1;
+    transform: scale(1.06);
 }
 
 #utc-time {
@@ -148,6 +151,11 @@ body::after {
     color: var(--text-secondary);
     letter-spacing: 1px;
     font-variant-numeric: tabular-nums;
+    transition: color var(--transition-fast);
+}
+
+#utc-time:hover {
+    color: var(--text-primary);
 }
 
 /* ──────────── Table ──────────── */
@@ -160,24 +168,29 @@ body::after {
 
 .terminal-table th {
     text-align: left;
-    padding: 8px 14px 12px;
+    padding: 8px 14px 14px;
     color: var(--text-dim);
     font-size: 9px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 2.5px;
     border-bottom: 1px solid var(--border);
+    transition: color var(--transition-fast);
+}
+
+.terminal-table th:hover {
+    color: var(--text-secondary);
 }
 
 .terminal-table td {
     padding: 14px;
     font-size: 13.5px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-    transition: color 0.3s ease;
+    transition: color var(--transition-smooth), transform var(--transition-smooth);
 }
 
 .terminal-table tbody tr {
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all var(--transition-smooth);
     border-radius: 4px;
 }
 
@@ -192,6 +205,7 @@ body::after {
     text-shadow: 0 0 8px var(--accent-glow);
 }
 
+/* ── Typography Hierarchy ── */
 .coin-name {
     font-weight: 700;
     color: var(--text-dim);
@@ -199,30 +213,45 @@ body::after {
 
 .coin-name span {
     color: var(--text-primary);
-    transition: color 0.25s ease, text-shadow 0.25s ease;
+    transition: color var(--transition-smooth), text-shadow var(--transition-smooth);
 }
 
+/* Price — primary data, most visual weight */
 .price-val {
     color: var(--text-primary);
     opacity: 0.9;
 }
 
+.price {
+    font-size: 14.5px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
+}
+
+/* Prediction — action signal, high visual presence */
+.pred {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
 .pred-up {
     color: var(--accent);
-    text-shadow: 0 0 6px var(--accent-glow);
+    text-shadow: 0 0 8px var(--accent-glow);
 }
 
 .pred-down {
     color: var(--danger);
-    text-shadow: 0 0 6px var(--danger-glow);
+    text-shadow: 0 0 8px var(--danger-glow);
 }
 
+/* Change — secondary info, smaller */
 .change-val {
     font-size: 12px;
     font-weight: 500;
 }
 
-.price,
 .change {
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.5px;
@@ -282,8 +311,8 @@ body::after {
 
 /* ──────────── Footer ──────────── */
 .terminal-footer {
-    margin-top: 20px;
-    padding-top: 16px;
+    margin-top: 24px;
+    padding-top: 18px;
     border-top: 1px solid var(--border);
     font-size: 10px;
     color: var(--text-dim);
@@ -296,6 +325,7 @@ body::after {
 #cycle-info {
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+    transition: color var(--transition-fast);
 }
 
 .status-meta {
@@ -311,6 +341,11 @@ body::after {
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+    transition: color var(--transition-fast);
+}
+
+.status-item:hover {
+    color: var(--text-secondary);
 }
 
 .modem-light {
@@ -342,6 +377,11 @@ body::after {
     display: inline-block;
     text-align: right;
     letter-spacing: 0.5px;
+    transition: opacity var(--transition-fast);
+}
+
+.bit-stream:hover {
+    opacity: 0.6;
 }
 
 .ping-val {
@@ -350,24 +390,28 @@ body::after {
     font-variant-numeric: tabular-nums;
 }
 
-/* ──────────── Loading Bar ──────────── */
+/* ──────────── Loading Bar (Continuous) ──────────── */
 .loading-bar-container {
     width: 100%;
     height: 2px;
     background: rgba(255, 255, 255, 0.03);
-    margin-top: 14px;
+    margin-top: 16px;
     border-radius: 1px;
     overflow: hidden;
-    position: relative;
 }
 
 .loading-bar {
-    width: 0%;
+    width: 40%;
     height: 100%;
-    background: linear-gradient(90deg, var(--text-dim), var(--accent));
+    background: linear-gradient(90deg, transparent, var(--text-dim), var(--accent), transparent);
     box-shadow: 0 0 8px var(--accent-glow);
-    transition: width 0.1s linear;
     border-radius: 1px;
+    animation: barSlide 2.5s ease-in-out infinite;
+}
+
+@keyframes barSlide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
 }
 
 /* ──────────── Row Flash Animations ──────────── */
@@ -417,14 +461,69 @@ body::after {
     animation: pulse 2.5s ease-in-out infinite;
 }
 
+/* ──────────── Row stagger entrance ──────────── */
+@keyframes fadeSlideIn {
+    0% {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.terminal-table tbody tr {
+    animation: fadeSlideIn 0.4s ease-out both;
+}
+
+.terminal-table tbody tr:nth-child(1) { animation-delay: 0.05s; }
+.terminal-table tbody tr:nth-child(2) { animation-delay: 0.10s; }
+.terminal-table tbody tr:nth-child(3) { animation-delay: 0.15s; }
+.terminal-table tbody tr:nth-child(4) { animation-delay: 0.20s; }
+.terminal-table tbody tr:nth-child(5) { animation-delay: 0.25s; }
+
 /* ──────────── Responsive ──────────── */
+
+/* Tablet */
+@media (max-width: 768px) {
+    .terminal-container {
+        max-width: 100%;
+        padding: 24px 20px;
+        border-radius: 6px;
+    }
+
+    .terminal-header {
+        margin-bottom: 22px;
+        padding-bottom: 16px;
+    }
+
+    .brand-container {
+        font-size: 16px;
+        gap: 12px;
+    }
+
+    .terminal-table td {
+        padding: 12px 10px;
+    }
+}
+
+/* Mobile */
 @media (max-width: 600px) {
+    body {
+        justify-content: flex-start;
+        padding-top: 0;
+    }
+
     .terminal-container {
         padding: 20px 16px;
         border-radius: 0;
         border-left: none;
         border-right: none;
         max-width: 100%;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
     }
 
     .terminal-header {
@@ -444,9 +543,23 @@ body::after {
         height: 28px;
     }
 
+    .terminal-table {
+        flex: 1;
+    }
+
     .terminal-table td {
-        padding: 10px 8px;
+        padding: 12px 8px;
         font-size: 12px;
+    }
+
+    /* Keep price readable on mobile */
+    .terminal-table td.price {
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .terminal-table td.pred {
+        font-size: 12.5px;
     }
 
     .terminal-table th {
@@ -456,12 +569,51 @@ body::after {
 
     .terminal-footer {
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
         align-items: flex-start;
+        margin-top: auto;
+        padding-top: 14px;
     }
 
     .status-meta {
         gap: 10px;
         justify-content: flex-start;
+        width: 100%;
+    }
+
+    /* Larger touch targets on mobile */
+    .status-item {
+        padding: 4px 0;
+    }
+
+    .loading-bar-container {
+        height: 3px;
+        margin-top: 12px;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 380px) {
+    .terminal-container {
+        padding: 16px 12px;
+    }
+
+    .terminal-table td {
+        padding: 10px 6px;
+        font-size: 11px;
+    }
+
+    .terminal-table td.price {
+        font-size: 12px;
+    }
+
+    .brand-container {
+        font-size: 14px;
+        letter-spacing: 2px;
+    }
+
+    .status-meta {
+        gap: 8px;
+        font-size: 9px;
     }
 }
