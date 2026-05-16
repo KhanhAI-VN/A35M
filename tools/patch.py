@@ -60,11 +60,6 @@ def build_core():
     print(f"Building {output_file}...")
 
     with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("/* ========================================================= */\n")
-        f.write("/* AUTO-GENERATED AMALGAMATION FILE: core.c                  */\n")
-        f.write("/* Do not edit! Regenerate with: python3 patch.py            */\n")
-        f.write("/* ========================================================= */\n\n")
-
         f.write("#define STB_SPRINTF_IMPLEMENTATION\n")
         f.write("#define ARENA_IMPLEMENTATION\n\n")
 
@@ -85,6 +80,29 @@ def build_core():
                 content = strip_all_includes(content)
                 content = remove_impl_defines(content)
                 f.write(content + "\n")
+
+        f.write("\n/* --- EMBEDDED ASSETS --- */\n")
+        
+        def embed_asset(filepath, var_name, add_null=False):
+            if not os.path.exists(filepath):
+                print(f" Warning: Missing asset {filepath}")
+                return ""
+            with open(filepath, 'rb') as sf:
+                data = sf.read()
+            length = len(data)
+            if add_null:
+                data += b'\x00'
+            hex_chars = [f"0x{b:02x}" for b in data]
+            lines = []
+            for i in range(0, len(hex_chars), 12):
+                lines.append(", ".join(hex_chars[i:i+12]))
+            array_content = ",\n  ".join(lines)
+            return f"const unsigned char {var_name}[] = {{\n  {array_content}\n}};\nconst unsigned int {var_name}_len = {length};\n\n"
+
+        f.write(embed_asset("src/web/web.html", "web_html", add_null=True))
+        f.write(embed_asset("src/web/web.css", "web_css", add_null=True))
+        f.write(embed_asset("src/web/logo.png", "logo_png", add_null=False))
+
 
     print(f"Success: Generated {output_file}")
     print(f"Build:   gcc -O3 core.c -o a35m_bot -lcurl -lm -lmicrohttpd -luv")
