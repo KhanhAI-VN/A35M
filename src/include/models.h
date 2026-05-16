@@ -104,7 +104,7 @@ static inline Tensor* get_tp(Model *m, const char *pre, const char *post) {
     char n[128]; stbsp_snprintf(n, sizeof(n), "%s%s", pre, post); return get_t(m, n);
 }
 
-static inline void revin_norm(float *x, RevINStats *s, Model *m) {
+static inline void revin_norm(float * restrict x, RevINStats * restrict s, Model *m) {
     if (!x || !s || !m) return;
     float sum = 0, sq = 0;
     for (int i = 0; i < SEQ_LEN; i++) { sum += x[i]; sq += x[i] * x[i]; }
@@ -116,6 +116,7 @@ static inline void revin_norm(float *x, RevINStats *s, Model *m) {
         for (int i = 0; i < SEQ_LEN; i++) x[i] = (x[i] - s->mean) / s->stdev;
         return;
     }
+    #pragma GCC ivdep
     for (int i = 0; i < SEQ_LEN; i++) x[i] = ((x[i] - s->mean) / s->stdev) * w->data[0] + b->data[0];
 }
 
@@ -127,7 +128,7 @@ static inline float revin_denorm(float x, RevINStats *s, Model *m) {
     return ((x - bias) / (weight + 1e-10f)) * s->stdev + s->mean;
 }
 
-static inline void series_decomp(float *x, float *res, float *tr) {
+static inline void series_decomp(const float * restrict x, float * restrict res, float * restrict tr) {
     float sum = x[0] * KERNEL_SIZE;
     for (int i = 0; i < SEQ_LEN; i++) {
         tr[i] = sum / KERNEL_SIZE;
@@ -139,7 +140,7 @@ static inline void series_decomp(float *x, float *res, float *tr) {
     }
 }
 
-static inline void patch_linear_forward(float *in, Model *m, const char *pre, float *out) {
+static inline void patch_linear_forward(const float * restrict in, Model *m, const char *pre, float * restrict out) {
     float feat[N_P * D_MODEL]; 
     float avg[D_MODEL] = {0}, hid[D_MODEL];
     Tensor *wc = get_tp(m, pre, "_patch_conv_conv_weight"), *bc = get_tp(m, pre, "_patch_conv_conv_bias");
@@ -152,8 +153,9 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
         }
         for (int d = 0; d < D_MODEL; d++) {
             float v = bc->data[d], g = bc->data[d + D_MODEL];
-            float *w_v = &wc->data[d * PATCH_LEN];
-            float *w_g = &wc->data[(d + D_MODEL) * PATCH_LEN];
+            float * restrict w_v = &wc->data[d * PATCH_LEN];
+            float * restrict w_g = &wc->data[(d + D_MODEL) * PATCH_LEN];
+            #pragma GCC unroll 4
             for (int k = 0; k < PATCH_LEN; k++) {
                 v += patch_in[k] * w_v[k]; 
                 g += patch_in[k] * w_g[k];
@@ -175,11 +177,13 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
 
     for (int i = 0; i < h_dim; i++) { 
         hid[i] = b1->data[i]; 
+        #pragma GCC unroll 4
         for (int j = 0; j < D_MODEL; j++) hid[i] += avg[j] * w1->data[i * D_MODEL + j]; 
         if (hid[i] < 0) hid[i] = 0; // ReLU
     }
     for (int i = 0; i < D_MODEL; i++) {
         float sc = b2->data[i]; 
+        #pragma GCC unroll 4
         for (int j = 0; j < h_dim; j++) sc += hid[j] * w2->data[i * h_dim + j];
         sc = 1 / (1 + expf(-sc)); // Sigmoid
         for (int p = 0; p < N_P; p++) feat[i * N_P + p] *= sc;
@@ -187,10 +191,11 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
     Tensor *wh = get_tp(m, pre, "_head_linear_weight"), *bh = get_tp(m, pre, "_head_linear_bias");
     if (!wh || !bh || wh->data_len < (D_MODEL * N_P) || bh->data_len < 1) return;
     out[0] = bh->data[0]; 
+    #pragma GCC ivdep
     for (int i = 0; i < D_MODEL * N_P; i++) out[0] += feat[i] * wh->data[i];
 }
 
-static inline float predict(Model *m, float *in) {
+static inline float predict(Model *m, const float * restrict in) {
     if (!m || !in) return NAN;
     float x[SEQ_LEN], res[SEQ_LEN], tr[SEQ_LEN]; 
     float ro[1] = {0}, to[1] = {0}; RevINStats s = {0};
