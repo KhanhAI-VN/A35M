@@ -205,13 +205,22 @@ int main() {
         }
 
         // -------------------------------------------------------------
+        // Market-wide filter: skip entries if >= 80% coins predict DOWN
+        // -------------------------------------------------------------
+        int n_down = 0;
+        for (int c = 0; c < N_COINS; c++) {
+            if (daily_trends[c] == 0) n_down++;
+        }
+        int skip_day = (n_down >= (int)(N_COINS * 0.8f));
+
+        // -------------------------------------------------------------
         // PASS 2: Process 00:00 Entries (Using isolated 00:00 Capital)
         // -------------------------------------------------------------
         for (int c = 0; c < N_COINS; c++) {
             int trend = daily_trends[c];
             int h_start = offsets[c] + d * 24;
 
-            if (pos[c] == 0 && trend == 1) {
+            if (pos[c] == 0 && trend == 1 && !skip_day) {
                 float current_margin = capital / N_COINS;
                 float current_notional = current_margin * LEVERAGE;
                 

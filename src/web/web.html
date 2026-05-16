@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Shrimp AI Trading Terminal — real-time crypto predictions">
     <title>Shrimp Terminal</title>
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="stylesheet" href="web.css">
@@ -12,13 +13,13 @@
 <body>
     <div class="scanline"></div>
     <div class="terminal-container">
-        <div class="terminal-header">
+        <header class="terminal-header">
             <div class="brand-container">
-                <img src="logo.png" class="logo">
+                <img src="logo.png" class="logo" alt="Shrimp">
                 <span>SHRIMP</span>
             </div>
             <div id="utc-time">UTC: --:--:--</div>
-        </div>
+        </header>
 
         <table class="terminal-table">
             <thead>
@@ -63,7 +64,7 @@
             </tbody>
         </table>
 
-        <div class="terminal-footer">
+        <footer class="terminal-footer">
             <div id="cycle-info">- Initializing...</div>
             <div class="status-meta">
                 <span class="status-item"><span class="modem-light"></span>WS_ACTIVE</span>
@@ -71,7 +72,7 @@
                 <span class="status-item" id="ping-status">Ping: <span class="ping-val">--ms</span></span>
                 <span id="bit-stream" class="bit-stream"></span>
             </div>
-        </div>
+        </footer>
         <div class="loading-bar-container">
             <div id="progress" class="loading-bar"></div>
         </div>

@@ -1,12 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap');
 
 :root {
-    --bg-color: #0a0c10;
-    --text-primary: #ffffff;
-    --text-dim: #545d68;
-    --accent: #00ff41;
-    --glow: rgba(255, 255, 255, 0.05);
-    --border: rgba(255, 255, 255, 0.1);
+    --bg-color: #06080c;
+    --bg-surface: rgba(255, 255, 255, 0.015);
+    --text-primary: #e8edf3;
+    --text-secondary: #8b95a5;
+    --text-dim: #464f5c;
+    --accent: #00e639;
+    --accent-glow: rgba(0, 230, 57, 0.15);
+    --accent-subtle: rgba(0, 230, 57, 0.06);
+    --danger: #ff3b4f;
+    --danger-glow: rgba(255, 59, 79, 0.15);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-hover: rgba(255, 255, 255, 0.12);
+    --radius: 8px;
 }
 
 * {
@@ -25,69 +32,97 @@ body {
     justify-content: center;
     min-height: 100vh;
     overflow: hidden;
-    letter-spacing: -0.2px;
+    letter-spacing: -0.3px;
 }
 
+/* CRT scanline overlay */
 body::before {
     content: " ";
     display: block;
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
     right: 0;
     background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
-        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+        linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.015), rgba(0, 0, 255, 0.04));
     z-index: 2;
-    background-size: 100% 4px, 3px 100%;
+    background-size: 100% 3px, 3px 100%;
     mix-blend-mode: overlay;
-    opacity: 0.3;
+    opacity: 0.2;
     pointer-events: none;
 }
 
+/* Vignette */
+body::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.8) 140%);
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* ──────────── Terminal Container ──────────── */
 .terminal-container {
     position: relative;
     z-index: 3;
     width: 100%;
-    max-width: 750px;
-    padding: 30px;
-    background: rgba(255, 255, 255, 0.01);
+    max-width: 780px;
+    padding: 32px 36px;
+    background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    box-shadow: 0 0 20px rgba(0, 255, 65, 0.05), inset 0 0 15px rgba(0, 255, 65, 0.02);
-    backdrop-filter: blur(4px);
-    transition: box-shadow 0.3s ease;
+    border-radius: var(--radius);
+    box-shadow:
+        0 0 40px rgba(0, 230, 57, 0.03),
+        0 4px 24px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: box-shadow 0.4s ease, border-color 0.4s ease;
 }
 
 .terminal-container:hover {
-    box-shadow: 0 0 30px rgba(0, 255, 65, 0.1), inset 0 0 20px rgba(0, 255, 65, 0.05);
+    border-color: var(--border-hover);
+    box-shadow:
+        0 0 60px rgba(0, 230, 57, 0.06),
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* ──────────── Header ──────────── */
 .terminal-header {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 30px;
+    align-items: center;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
     font-size: 11px;
     text-transform: uppercase;
     color: var(--text-dim);
-    letter-spacing: 1px;
-    align-items: center;
+    letter-spacing: 1.5px;
 }
 
 .brand-container {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     color: var(--text-primary);
     font-weight: 700;
-    font-size: 16px;
+    font-size: 17px;
+    letter-spacing: 3px;
 }
 
 .brand-container span::after {
     content: '_';
     animation: blink 1s step-end infinite;
     color: var(--accent);
-    margin-left: 2px;
+    margin-left: 1px;
+    font-weight: 300;
 }
 
 @keyframes blink {
@@ -96,66 +131,65 @@ body::before {
 }
 
 .logo {
-    height: 36px;
+    height: 34px;
     width: auto;
     filter: brightness(0) invert(1);
-    opacity: 0.95;
+    opacity: 0.9;
+    transition: opacity 0.3s ease;
 }
 
-.status-dot {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    background-color: var(--accent);
-    border-radius: 50%;
-    margin-right: 8px;
-    animation: pulse 2s infinite;
+.logo:hover {
+    opacity: 1;
 }
 
-@keyframes pulse {
-    0% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.3;
-    }
-
-    100% {
-        opacity: 1;
-    }
+#utc-time {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
 }
 
+/* ──────────── Table ──────────── */
 .terminal-table {
     width: 100%;
-    border-collapse: collapse;
-    margin: 15px 0;
+    border-collapse: separate;
+    border-spacing: 0 2px;
+    margin: 8px 0 16px;
 }
 
 .terminal-table th {
     text-align: left;
-    padding: 10px;
+    padding: 8px 14px 12px;
     color: var(--text-dim);
-    font-size: 10px;
+    font-size: 9px;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 2.5px;
     border-bottom: 1px solid var(--border);
 }
 
 .terminal-table td {
-    padding: 15px 10px;
-    font-size: 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding: 14px;
+    font-size: 13.5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    transition: color 0.3s ease;
 }
 
 .terminal-table tbody tr {
-    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 4px;
 }
 
 .terminal-table tbody tr:hover {
-    background-color: rgba(0, 255, 65, 0.05);
-    box-shadow: inset 3px 0 0 var(--accent);
-    transform: translateX(4px);
+    background-color: var(--accent-subtle);
+    box-shadow: inset 2px 0 0 var(--accent);
+    transform: translateX(3px);
+}
+
+.terminal-table tbody tr:hover .coin-name span {
+    color: var(--accent);
+    text-shadow: 0 0 8px var(--accent-glow);
 }
 
 .coin-name {
@@ -165,6 +199,7 @@ body::before {
 
 .coin-name span {
     color: var(--text-primary);
+    transition: color 0.25s ease, text-shadow 0.25s ease;
 }
 
 .price-val {
@@ -174,16 +209,17 @@ body::before {
 
 .pred-up {
     color: var(--accent);
-    text-shadow: 0 0 5px rgba(0, 255, 65, 0.4);
+    text-shadow: 0 0 6px var(--accent-glow);
 }
 
 .pred-down {
-    color: #ff4757;
-    text-shadow: 0 0 5px rgba(255, 71, 87, 0.4);
+    color: var(--danger);
+    text-shadow: 0 0 6px var(--danger-glow);
 }
 
 .change-val {
     font-size: 12px;
+    font-weight: 500;
 }
 
 .price,
@@ -192,7 +228,7 @@ body::before {
     letter-spacing: -0.5px;
 }
 
-/* Number Roll Animations */
+/* ──────────── Number Roll Animations ──────────── */
 .animate-container {
     display: inline-flex;
     flex-direction: column;
@@ -209,120 +245,119 @@ body::before {
 }
 
 .slide-up-out {
-    animation: slideUpOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    animation: slideUpOut 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .slide-up-in {
-    animation: slideUpIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    animation: slideUpIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .slide-down-out {
-    animation: slideDownOut 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    animation: slideDownOut 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .slide-down-in {
-    animation: slideDownIn 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    animation: slideDownIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes slideUpIn {
-    0% {
-        transform: translateY(0);
-        opacity: 0;
-    }
-
-    100% {
-        transform: translateY(-100%);
-        opacity: 1;
-    }
+    0% { transform: translateY(0); opacity: 0; }
+    100% { transform: translateY(-100%); opacity: 1; }
 }
 
 @keyframes slideUpOut {
-    0% {
-        transform: translateY(0);
-        opacity: 1;
-    }
-
-    100% {
-        transform: translateY(-100%);
-        opacity: 0;
-    }
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(-100%); opacity: 0; }
 }
 
 @keyframes slideDownIn {
-    0% {
-        transform: translateY(-200%);
-        opacity: 0;
-    }
-
-    100% {
-        transform: translateY(-100%);
-        opacity: 1;
-    }
+    0% { transform: translateY(-200%); opacity: 0; }
+    100% { transform: translateY(-100%); opacity: 1; }
 }
 
 @keyframes slideDownOut {
-    0% {
-        transform: translateY(0);
-        opacity: 1;
-    }
-
-    100% {
-        transform: translateY(100%);
-        opacity: 0;
-    }
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(100%); opacity: 0; }
 }
 
+/* ──────────── Footer ──────────── */
 .terminal-footer {
     margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
     font-size: 10px;
     color: var(--text-dim);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
+}
+
+#cycle-info {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .status-meta {
     display: flex;
-    gap: 15px;
+    gap: 16px;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .status-item {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
+    white-space: nowrap;
 }
 
 .modem-light {
-    width: 4px;
-    height: 4px;
+    width: 5px;
+    height: 5px;
     background: var(--accent);
     border-radius: 50%;
-    box-shadow: 0 0 4px var(--accent);
-    animation: pulse 2s infinite;
+    box-shadow: 0 0 6px var(--accent), 0 0 2px var(--accent);
+    animation: pulse 2.5s ease-in-out infinite;
 }
 
 .modem-light.secure {
-    background: #0088ff;
-    box-shadow: 0 0 4px #0088ff;
-    animation: pulse 2s infinite;
-    animation-delay: 0.5s;
+    background: #2d8cf0;
+    box-shadow: 0 0 6px #2d8cf0, 0 0 2px #2d8cf0;
+    animation: pulse 2.5s ease-in-out infinite;
+    animation-delay: 0.7s;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
 }
 
 .bit-stream {
-    font-family: monospace;
-    opacity: 0.4;
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0.3;
     font-size: 9px;
-    width: 75px;
+    width: 78px;
     display: inline-block;
     text-align: right;
+    letter-spacing: 0.5px;
 }
 
+.ping-val {
+    color: var(--text-secondary);
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ──────────── Loading Bar ──────────── */
 .loading-bar-container {
     width: 100%;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.05);
-    margin-top: 10px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.03);
+    margin-top: 14px;
+    border-radius: 1px;
+    overflow: hidden;
     position: relative;
 }
 
@@ -330,28 +365,20 @@ body::before {
     width: 0%;
     height: 100%;
     background: linear-gradient(90deg, var(--text-dim), var(--accent));
-    box-shadow: 0 0 5px var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
     transition: width 0.1s linear;
+    border-radius: 1px;
 }
 
+/* ──────────── Row Flash Animations ──────────── */
 @keyframes flashUp {
-    0% {
-        background-color: rgba(46, 204, 113, 0.15);
-    }
-
-    100% {
-        background-color: transparent;
-    }
+    0% { background-color: rgba(0, 230, 57, 0.12); }
+    100% { background-color: transparent; }
 }
 
 @keyframes flashDown {
-    0% {
-        background-color: rgba(231, 76, 60, 0.15);
-    }
-
-    100% {
-        background-color: transparent;
-    }
+    0% { background-color: rgba(255, 59, 79, 0.12); }
+    100% { background-color: transparent; }
 }
 
 .flash-up {
@@ -362,35 +389,79 @@ body::before {
     animation: flashDown 0.8s ease-out;
 }
 
-body::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: radial-gradient(circle, transparent 60%, rgba(0, 0, 0, 0.7) 120%);
-    pointer-events: none;
-    z-index: 4;
-}
-
+/* ──────────── Scanline Effect ──────────── */
 .scanline {
     width: 100%;
-    height: 100px;
+    height: 120px;
     z-index: 9999;
-    position: absolute;
+    position: fixed;
     pointer-events: none;
-    background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 255, 65, 0.05) 50%, rgba(0, 0, 0, 0) 100%);
-    opacity: 0.1;
-    animation: scanline 8s linear infinite;
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 230, 57, 0.04) 50%, rgba(0, 0, 0, 0) 100%);
+    opacity: 0.08;
+    animation: scanline 10s linear infinite;
 }
 
 @keyframes scanline {
-    0% { top: -100px; }
+    0% { top: -120px; }
     100% { top: 100vh; }
 }
 
-.ping-val {
-    color: var(--text-primary);
-    margin-left: 5px;
+/* ──────────── Status Dot (kept for compatibility) ──────────── */
+.status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    background-color: var(--accent);
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: pulse 2.5s ease-in-out infinite;
+}
+
+/* ──────────── Responsive ──────────── */
+@media (max-width: 600px) {
+    .terminal-container {
+        padding: 20px 16px;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        max-width: 100%;
+    }
+
+    .terminal-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        padding-bottom: 14px;
+    }
+
+    .brand-container {
+        font-size: 15px;
+        gap: 10px;
+    }
+
+    .logo {
+        height: 28px;
+    }
+
+    .terminal-table td {
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .terminal-table th {
+        font-size: 8px;
+        padding: 6px 8px 10px;
+    }
+
+    .terminal-footer {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .status-meta {
+        gap: 10px;
+        justify-content: flex-start;
+    }
 }
