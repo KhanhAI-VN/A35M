@@ -10,6 +10,8 @@
 #include "../3libs/log.h"
 #define STB_SPRINTF_IMPLEMENTATION
 #include "../3libs/stb_sprintf.h"
+#define ARENA_IMPLEMENTATION
+#include "../3libs/arena.h"
 
 static volatile sig_atomic_t keep_running = 1;
 static void sig_handler(int _) { (void)_; keep_running = 0; }

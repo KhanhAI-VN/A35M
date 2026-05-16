@@ -11,6 +11,7 @@
 #include "../../3libs/log.h"
 #include "../../3libs/yyjson.h"
 #include "../../3libs/sds.h"
+#include "../../3libs/arena.h"
 
 // Globals for Event Loop
 static uv_loop_t *loop;
@@ -54,15 +55,18 @@ static void run_inference_task(uv_work_t *req) {
     
     // Check if model needs loading (download synchronously inside worker thread)
     if (!cache->model) {
-        uint8_t *l_model_buf = malloc(49152);
+        Arena arena = {0}; // Khởi tạo một Arena mới và sạch (0 bytes)
+        size_t max_model_size = 1024 * 1024 * 2; // 2MB cho an toàn tương lai
+        uint8_t *l_model_buf = arena_alloc(&arena, max_model_size);
+        
         if (l_model_buf) {
-            int m_len = download_model_from_github(cname, l_model_buf, 49152);
+            int m_len = download_model_from_github(cname, l_model_buf, max_model_size);
             if (m_len > 0) {
                 uint8_t pool_idx = (uint8_t)(cache - caches);
                 cache->model = load_model(pool_idx, l_model_buf, m_len);
             }
-            free(l_model_buf);
         }
+        arena_free(&arena);
     }
 
     if (!cache->model || task->kline_count < SEQ_LEN + 2) {
@@ -255,12 +259,22 @@ static size_t async_write_cb(void *contents, size_t size, size_t nmemb, void *us
 
 static void add_download(const char *coin) {
     FetchContext *ctx = malloc(sizeof(FetchContext));
+    if (!ctx) {
+        log_error("OOM: Failed to allocate FetchContext");
+        return;
+    }
     strncpy(ctx->coin, coin, sizeof(ctx->coin)-1);
     ctx->coin[sizeof(ctx->coin)-1] = 0;
     stbsp_snprintf(ctx->url, sizeof(ctx->url), "https://api.binance.com/api/v3/klines?symbol=%sUSDT&interval=1d&limit=%d", coin, SEQ_LEN + 2);
     ctx->response = sdsempty();
     
     CURL *easy = curl_easy_init();
+    if (!easy) {
+        log_error("Failed to init CURL for %s", coin);
+        sdsfree(ctx->response);
+        free(ctx);
+        return;
+    }
     ctx->easy = easy;
     
     curl_easy_setopt(easy, CURLOPT_URL, ctx->url);
@@ -269,7 +283,7 @@ static void add_download(const char *coin) {
     curl_easy_setopt(easy, CURLOPT_PRIVATE, ctx);
     curl_easy_setopt(easy, CURLOPT_USERAGENT, "A35M-Engine/1.0");
     curl_easy_setopt(easy, CURLOPT_TIMEOUT, 15L);
-    
+    curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
     curl_multi_add_handle(curl_handle, easy);
 }
 
