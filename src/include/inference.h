@@ -144,7 +144,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         pthread_mutex_unlock(&cache->coin_mutex);
         
         // Allocate local buffers for downloading data to avoid shared-state bottlenecks
-        uint8_t *l_model_buf = malloc(49152);
+        uint8_t *l_model_buf = malloc(18 * 1024);
         Kline *l_kline_buf = malloc((SEQ_LEN + 2) * sizeof(Kline));
         if (!l_model_buf || !l_kline_buf) {
             free(l_model_buf); free(l_kline_buf);
@@ -152,7 +152,7 @@ static inline PredictionResult run_prediction(const char *coin) {
             return (PredictionResult){.success = 0, .coin = "", .error_msg = "Memory error"};
         }
 
-        int m_len = download_model_from_github(cname, l_model_buf, 49152);
+        int m_len = download_model_from_github(cname, l_model_buf, 18 * 1024);
         int f_count = fetch_binance_data(symbol, l_kline_buf, SEQ_LEN + 2);
         
         cache = get_coin_cache(cname);

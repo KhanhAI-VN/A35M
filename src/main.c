@@ -16,8 +16,8 @@ static char retrain_token[128] = {0};
 static int last_retrain_day = -1;
 static int last_retrain_year = -1;
 
-const char *g_coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "BNB"};
-int g_num_coins = 8;
+const char *g_coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
+int g_num_coins = 5;
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int code, const char *type) {
     struct MHD_Response *r = MHD_create_response_from_buffer(strlen(body), (void*)body, MHD_RESPMEM_MUST_COPY);
