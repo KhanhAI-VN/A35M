@@ -178,7 +178,7 @@ int main() {
         int daily_trends[N_COINS] = {0};
 
         // -------------------------------------------------------------
-        // PASS 1: Generate Signals & Process 00:00 Exits
+        // PASS 1: Generate Signals for all coins
         // -------------------------------------------------------------
         for (int c = 0; c < N_COINS; c++) {
             float input[SEQ_LEN];
@@ -190,11 +190,27 @@ int main() {
             }
             float pred = predict(models[c], input);
             daily_trends[c] = (pred > 0) ? 1 : 0; 
+        }
 
-            int h_start = offsets[c] + d * 24;
-            
-            // Exit at 00:00 open if trend reverses
+        // -------------------------------------------------------------
+        // Market-wide filter: If >= 80% coins predict DOWN, force ALL to DOWN
+        // -------------------------------------------------------------
+        int n_down = 0;
+        for (int c = 0; c < N_COINS; c++) {
+            if (daily_trends[c] == 0) n_down++;
+        }
+        if (n_down >= (int)(N_COINS * 0.8f)) {
+            for (int c = 0; c < N_COINS; c++) {
+                daily_trends[c] = 0; // Force DOWN -> triggers exits and blocks entries
+            }
+        }
+
+        // -------------------------------------------------------------
+        // PASS 2: Process 00:00 Exits
+        // -------------------------------------------------------------
+        for (int c = 0; c < N_COINS; c++) {
             if (pos[c] == 1 && daily_trends[c] == 0) {
+                int h_start = offsets[c] + d * 24;
                 float exit_price = hourly_data[c][h_start].open;
                 float pnl = (exit_price - entry[c]) / entry[c] * entry_notional[c];
                 float fee = entry_notional[c] * FEE_PCT * 2.0f;
@@ -205,22 +221,11 @@ int main() {
         }
 
         // -------------------------------------------------------------
-        // Market-wide filter: skip entries if >= 80% coins predict DOWN
-        // -------------------------------------------------------------
-        int n_down = 0;
-        for (int c = 0; c < N_COINS; c++) {
-            if (daily_trends[c] == 0) n_down++;
-        }
-        int skip_day = (n_down >= (int)(N_COINS * 0.8f));
-
-        // -------------------------------------------------------------
-        // PASS 2: Process 00:00 Entries (Using isolated 00:00 Capital)
+        // PASS 3: Process 00:00 Entries (Using updated Capital)
         // -------------------------------------------------------------
         for (int c = 0; c < N_COINS; c++) {
-            int trend = daily_trends[c];
-            int h_start = offsets[c] + d * 24;
-
-            if (pos[c] == 0 && trend == 1 && !skip_day) {
+            if (pos[c] == 0 && daily_trends[c] == 1) {
+                int h_start = offsets[c] + d * 24;
                 float current_margin = capital / N_COINS;
                 float current_notional = current_margin * LEVERAGE;
                 
