@@ -193,7 +193,7 @@ static inline void patch_linear_forward(float *in, Model *m, const char *pre, fl
 static inline float predict(Model *m, float *in) {
     if (!m || !in) return NAN;
     float x[SEQ_LEN], res[SEQ_LEN], tr[SEQ_LEN]; 
-    float ro[1] = {0}, to[1] = {0}; RevINStats s;
+    float ro[1] = {0}, to[1] = {0}; RevINStats s = {0};
     memcpy(x, in, SEQ_LEN * 4); 
     revin_norm(x, &s, m); 
     series_decomp(x, res, tr);

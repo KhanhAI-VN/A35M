@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -O3 -Wall -I./src/include -I./3libs
-LDFLAGS = -lcurl -lm -lmicrohttpd
+LDFLAGS = -lcurl -lm -lmicrohttpd -luv
 
 a35m: src/main.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c src/include/models.h src/include/inference.h
 	$(CC) $(CFLAGS) src/main.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c -o a35m $(LDFLAGS)

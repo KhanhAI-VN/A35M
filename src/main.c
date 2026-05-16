@@ -3,6 +3,8 @@
 #include <string.h>
 #include <microhttpd.h>
 #include "include/inference.h"
+#include "include/cache.h"
+#include "include/async.h"
 #include "../3libs/log.h"
 #define STB_SPRINTF_IMPLEMENTATION
 #include "../3libs/stb_sprintf.h"
@@ -13,6 +15,9 @@ static size_t logo_sz = 0;
 static char retrain_token[128] = {0};
 static int last_retrain_day = -1;
 static int last_retrain_year = -1;
+
+const char *g_coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "BNB"};
+int g_num_coins = 8;
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int code, const char *type) {
     struct MHD_Response *r = MHD_create_response_from_buffer(strlen(body), (void*)body, MHD_RESPMEM_MUST_COPY);
@@ -68,7 +73,12 @@ void* scheduler_thread(void* arg) {
 static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *url, const char *meth, const char *v, const char *data, size_t *s, void **ptr) {
     if (!strcmp(url, "/api/predict")) {
         const char *coin = MHD_lookup_connection_value(c, MHD_GET_ARGUMENT_KIND, "coin");
-        PredictionResult r = run_prediction(coin ? coin : "BTC");
+        const char *cname = coin ? coin : "BTC";
+        CoinCache *cache = get_coin_cache(cname);
+        pthread_mutex_lock(&cache->coin_mutex);
+        PredictionResult r = cache->last_res;
+        pthread_mutex_unlock(&cache->coin_mutex);
+        
         char json[256];
         stbsp_snprintf(json, 256, "{\"success\":%s,\"price\":%.2f,\"change\":%.2f,\"trend\":\"%s\"}", 
                  r.success ? "true" : "false", r.last_price, r.change_pct, r.trend ? "UP" : "DOWN");
@@ -119,6 +129,10 @@ int main(int argc, char **argv) {
         pthread_create(&tid, NULL, scheduler_thread, NULL);
         pthread_detach(tid);
     }
+
+    pthread_t async_tid;
+    pthread_create(&async_tid, NULL, start_async_engine, NULL);
+    pthread_detach(async_tid);
 
     load("src/web/web.html", html); 
     load("src/web/web.css", css);

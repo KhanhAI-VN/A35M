@@ -56,8 +56,7 @@ static inline CoinCache* get_coin_cache(const char *coin) {
     }
     CoinCache *c = &caches[i];
     memset(c, 0, sizeof(CoinCache));
-    strncpy(c->coin, coin, sizeof(c->coin) - 1);
-    c->coin[sizeof(c->coin) - 1] = 0;
+    snprintf(c->coin, sizeof(c->coin), "%s", coin);
     c->last_sync_day = -1;
     pthread_mutex_init(&c->coin_mutex, NULL);
     pthread_mutex_unlock(&cache_internal_mutex);
