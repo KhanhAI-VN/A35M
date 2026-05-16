@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
+#include <unistd.h>
 #include <microhttpd.h>
 #include "include/inference.h"
 #include "include/cache.h"
@@ -9,7 +11,10 @@
 #define STB_SPRINTF_IMPLEMENTATION
 #include "../3libs/stb_sprintf.h"
 
-static char html[8192], css[8192];
+static volatile sig_atomic_t keep_running = 1;
+static void sig_handler(int _) { (void)_; keep_running = 0; }
+
+static sds html = NULL, css = NULL;
 static uint8_t logo[32768];
 static size_t logo_sz = 0;
 static char retrain_token[128] = {0};
@@ -28,9 +33,20 @@ static enum MHD_Result send_res(struct MHD_Connection *c, const char *body, int 
     return ret;
 }
 
-static void load(const char *p, char *b) {
-    FILE *f = fopen(p, "r");
-    if (f) { b[fread(b, 1, 8191, f)] = 0; fclose(f); }
+static sds load_sds(const char *p) {
+    FILE *f = fopen(p, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); return NULL; }
+    sds s = sdsnewlen(NULL, sz);
+    size_t read_bytes = fread(s, 1, sz, f);
+    if (read_bytes != (size_t)sz) {
+        log_warn("load_sds read %zu bytes, expected %ld", read_bytes, sz);
+    }
+    fclose(f);
+    return s;
 }
 
 static void load_bin(const char *p, uint8_t *b, size_t max_sz, size_t *sz) {
@@ -92,8 +108,16 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c, const char *
         return ret;
     }
     int is_css = !strcmp(url, "/web.css");
-    char *buf = is_css ? css : html;
-    return buf[0] ? send_res(c, buf, 200, is_css ? "text/css" : "text/html") : send_res(c, "404", 404, "text/plain");
+    sds buf = is_css ? css : html;
+    if (buf) {
+        struct MHD_Response *r = MHD_create_response_from_buffer(sdslen(buf), (void*)buf, MHD_RESPMEM_MUST_COPY);
+        MHD_add_response_header(r, "Content-Type", is_css ? "text/css" : "text/html");
+        MHD_add_response_header(r, "Access-Control-Allow-Origin", "*");
+        enum MHD_Result ret = MHD_queue_response(c, 200, r);
+        MHD_destroy_response(r);
+        return ret;
+    }
+    return send_res(c, "404", 404, "text/plain");
 }
 
 static void* prediction_wrapper(void *arg) {
@@ -134,13 +158,24 @@ int main(int argc, char **argv) {
     pthread_create(&async_tid, NULL, start_async_engine, NULL);
     pthread_detach(async_tid);
 
-    load("src/web/web.html", html); 
-    load("src/web/web.css", css);
+    signal(SIGINT, sig_handler);
+    signal(SIGTERM, sig_handler);
+
+    html = load_sds("src/web/web.html"); 
+    css = load_sds("src/web/web.css");
     load_bin("src/web/logo.png", logo, sizeof(logo), &logo_sz);
 
     struct MHD_Daemon *d = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, 8080, 0, 0, &handler, 0, MHD_OPTION_END);
     if (!d) { log_fatal("Failed to start HTTP daemon on port 8080"); return 1; }
     log_info("Shrimp Dashboard started on http://localhost:8080");
-    printf("Shrimp Dashboard: http://localhost:8080\nPress Enter to stop.\n");
-    getchar(); MHD_stop_daemon(d); return 0;
+    printf("Shrimp Dashboard: http://localhost:8080\nPress Ctrl+C to stop.\n");
+    
+    while (keep_running) {
+        sleep(1);
+    }
+    
+    MHD_stop_daemon(d); 
+    if (html) sdsfree(html);
+    if (css) sdsfree(css);
+    return 0;
 }

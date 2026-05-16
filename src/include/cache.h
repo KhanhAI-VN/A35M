@@ -55,10 +55,19 @@ static inline CoinCache* get_coin_cache(const char *coin) {
         i = oi;
     }
     CoinCache *c = &caches[i];
+    pthread_mutex_t m = c->coin_mutex;
+    int has_mutex = (c->coin[0] != '\0');
+
     memset(c, 0, sizeof(CoinCache));
+    
+    if (has_mutex) {
+        c->coin_mutex = m;
+    } else {
+        pthread_mutex_init(&c->coin_mutex, NULL);
+    }
+    
     snprintf(c->coin, sizeof(c->coin), "%s", coin);
     c->last_sync_day = -1;
-    pthread_mutex_init(&c->coin_mutex, NULL);
     pthread_mutex_unlock(&cache_internal_mutex);
     return c;
 }
