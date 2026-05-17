@@ -21,78 +21,311 @@
             <div id="utc-time">UTC: --:--:--</div>
         </header>
 
-        <table class="terminal-table">
-            <thead>
-                <tr>
-                    <th>Asset</th>
-                    <th>Last Price</th>
-                    <th>Prediction</th>
-                    <th>24h Change</th>
-                </tr>
-            </thead>
-            <tbody id="table-body">
-                <tr id="row-BTC">
-                    <td class="coin-name"><span>BTC</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-ETH">
-                    <td class="coin-name"><span>ETH</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-SOL">
-                    <td class="coin-name"><span>SOL</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-SHIB">
-                    <td class="coin-name"><span>SHIB</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-ADA">
-                    <td class="coin-name"><span>ADA</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-XRP">
-                    <td class="coin-name"><span>XRP</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-DOGE">
-                    <td class="coin-name"><span>DOGE</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-LINK">
-                    <td class="coin-name"><span>LINK</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-BNB">
-                    <td class="coin-name"><span>BNB</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-                <tr id="row-AVAX">
-                    <td class="coin-name"><span>AVAX</span></td>
-                    <td class="price">--</td>
-                    <td class="pred">--</td>
-                    <td class="change">--</td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="tables-grid">
+            <!-- Table 1: coins 1-10 -->
+            <table class="terminal-table">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Last Price</th>
+                        <th>Prediction</th>
+                        <th>24h Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="row-ETH">
+                        <td class="coin-name"><span>ETH</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-BTC">
+                        <td class="coin-name"><span>BTC</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-BNB">
+                        <td class="coin-name"><span>BNB</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-LTC">
+                        <td class="coin-name"><span>LTC</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-ADA">
+                        <td class="coin-name"><span>ADA</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-XLM">
+                        <td class="coin-name"><span>XLM</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-XRP">
+                        <td class="coin-name"><span>XRP</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-TRX">
+                        <td class="coin-name"><span>TRX</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-LINK">
+                        <td class="coin-name"><span>LINK</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-FET">
+                        <td class="coin-name"><span>FET</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Table 2: coins 11-20 -->
+            <table class="terminal-table">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Last Price</th>
+                        <th>Prediction</th>
+                        <th>24h Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="row-DASH">
+                        <td class="coin-name"><span>DASH</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-ZEC">
+                        <td class="coin-name"><span>ZEC</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-ATOM">
+                        <td class="coin-name"><span>ATOM</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-DUSK">
+                        <td class="coin-name"><span>DUSK</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-DOGE">
+                        <td class="coin-name"><span>DOGE</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-HBAR">
+                        <td class="coin-name"><span>HBAR</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-CHZ">
+                        <td class="coin-name"><span>CHZ</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-STORJ">
+                        <td class="coin-name"><span>STORJ</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-JST">
+                        <td class="coin-name"><span>JST</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-DOT">
+                        <td class="coin-name"><span>DOT</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Table 3: coins 21-30 -->
+            <table class="terminal-table">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Last Price</th>
+                        <th>Prediction</th>
+                        <th>24h Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="row-NMR">
+                        <td class="coin-name"><span>NMR</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-SOL">
+                        <td class="coin-name"><span>SOL</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-RUNE">
+                        <td class="coin-name"><span>RUNE</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-AVAX">
+                        <td class="coin-name"><span>AVAX</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-UNI">
+                        <td class="coin-name"><span>UNI</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-BCH">
+                        <td class="coin-name"><span>BCH</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-NEAR">
+                        <td class="coin-name"><span>NEAR</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-AAVE">
+                        <td class="coin-name"><span>AAVE</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-FIL">
+                        <td class="coin-name"><span>FIL</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-SHIB">
+                        <td class="coin-name"><span>SHIB</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Table 4: coins 31-40 -->
+            <table class="terminal-table">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Last Price</th>
+                        <th>Prediction</th>
+                        <th>24h Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="row-APE">
+                        <td class="coin-name"><span>APE</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-INJ">
+                        <td class="coin-name"><span>INJ</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-ETC">
+                        <td class="coin-name"><span>ETC</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-APT">
+                        <td class="coin-name"><span>APT</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-PHB">
+                        <td class="coin-name"><span>PHB</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-TON">
+                        <td class="coin-name"><span>TON</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-SUI">
+                        <td class="coin-name"><span>SUI</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-PEPE">
+                        <td class="coin-name"><span>PEPE</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-WLD">
+                        <td class="coin-name"><span>WLD</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                    <tr id="row-ONDO">
+                        <td class="coin-name"><span>ONDO</span></td>
+                        <td class="price">--</td>
+                        <td class="pred">--</td>
+                        <td class="change">--</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="summary-bar">
+            <span class="summary-label">▲ UP</span>
+            <span class="summary-count" id="up-count">0</span>
+            <span class="summary-sep">│</span>
+            <span class="summary-label">Total 24h</span>
+            <span class="summary-value" id="up-total-change">+0.00%</span>
+        </div>
 
         <footer class="terminal-footer">
             <div id="cycle-info">- Initializing...</div>
@@ -109,19 +342,13 @@
     </div>
 
     <script>
-        const coins = ['BTC', 'ETH', 'SOL', 'SHIB', 'ADA', 'XRP', 'DOGE', 'LINK', 'BNB', 'AVAX'];
-        const prevData = {
-            BTC: { price: 0, change: 0 },
-            ETH: { price: 0, change: 0 },
-            SOL: { price: 0, change: 0 },
-            SHIB: { price: 0, change: 0 },
-            ADA: { price: 0, change: 0 },
-            XRP: { price: 0, change: 0 },
-            DOGE: { price: 0, change: 0 },
-            LINK: { price: 0, change: 0 },
-            BNB: { price: 0, change: 0 },
-            AVAX: { price: 0, change: 0 }
-        };
+        const coins = ['ETH', 'BTC', 'BNB', 'LTC', 'ADA', 'XLM', 'XRP', 'TRX', 'LINK',
+            'FET', 'DASH', 'ZEC', 'ATOM', 'DUSK', 'DOGE', 'HBAR', 'CHZ', 'STORJ', 'JST',
+            'DOT', 'NMR', 'SOL', 'RUNE', 'AVAX', 'UNI',
+            'BCH', 'NEAR', 'AAVE', 'FIL', 'SHIB', 'APE', 'INJ', 'ETC', 'APT', 'PHB',
+            'TON', 'SUI', 'PEPE', 'WLD', 'ONDO'];
+        const prevData = {};
+        coins.forEach(c => prevData[c] = { price: 0, change: 0 });
         let lastUpdateTime = Date.now();
 
         function updateClock() {
@@ -155,6 +382,9 @@
         }
 
         async function update() {
+            let upCount = 0;
+            let upTotalChange = 0;
+
             for (const coin of coins) {
                 const data = await fetchCoin(coin);
                 const row = document.getElementById(`row-${coin}`);
@@ -181,10 +411,21 @@
                     changeCell.className = `change change-val ${data.change >= 0 ? 'pred-up' : 'pred-down'}`;
 
                     prevData[coin] = { price: data.price, change: data.change };
+
+                    if (data.trend === 'UP') {
+                        upCount++;
+                        upTotalChange += data.change;
+                    }
                 } else {
                     row.innerHTML = `<td class="coin-name"><span>${coin}</span></td><td colspan="3" style="color:var(--text-dim)">Node offline</td>`;
                 }
             }
+
+            document.getElementById('up-count').innerText = upCount;
+            const totalEl = document.getElementById('up-total-change');
+            totalEl.innerText = (upTotalChange >= 0 ? '+' : '') + upTotalChange.toFixed(2) + '%';
+            totalEl.className = `summary-value ${upTotalChange >= 0 ? 'pred-up' : 'pred-down'}`;
+
             lastUpdateTime = Date.now();
         }
 

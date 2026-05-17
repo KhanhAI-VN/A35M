@@ -9,7 +9,7 @@
 #include "../../3libs/hashmap.h"
 #include "../../3libs/stb_sprintf.h"
 
-#define MAX_CACHED_COINS 10
+#define MAX_CACHED_COINS 45
 #define SEQ_LEN 365
 #define D_MODEL 16
 #define PATCH_LEN 30

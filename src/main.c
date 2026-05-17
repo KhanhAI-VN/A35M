@@ -27,8 +27,12 @@ static char retrain_token[128] = {0};
 static int last_retrain_day = -1;
 static int last_retrain_year = -1;
 
-const char *g_coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "LINK", "BNB", "AVAX"};
-int g_num_coins = 10;
+const char *g_coins[] = {"ETH", "BTC", "BNB", "LTC", "ADA", "XLM", "XRP", "TRX", "LINK",
+                         "FET", "DASH", "ZEC", "ATOM", "DUSK", "DOGE", "HBAR", "CHZ", "STORJ", "JST",
+                         "DOT", "NMR", "SOL", "RUNE", "AVAX", "UNI",
+                         "BCH", "NEAR", "AAVE", "FIL", "SHIB", "APE", "INJ", "ETC", "APT", "PHB",
+                         "TON", "SUI", "PEPE", "WLD", "ONDO"};
+int g_num_coins = 40;
 
 #define MIN_CONF_UP 0.0198f
 #define MIN_CONF_UP_PCT ((expf(MIN_CONF_UP) - 1.0f) * 100.0f)
@@ -156,18 +160,22 @@ static void *prediction_wrapper(void *arg) {
 }
 
 int main(int argc, char **argv) {
-  const char *coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "LINK", "BNB", "AVAX"};
+  const char *coins[] = {"ETH", "BTC", "BNB", "LTC", "ADA", "XLM", "XRP", "TRX", "LINK",
+                         "FET", "DASH", "ZEC", "ATOM", "DUSK", "DOGE", "HBAR", "CHZ", "STORJ", "JST",
+                         "DOT", "NMR", "SOL", "RUNE", "AVAX", "UNI",
+                         "BCH", "NEAR", "AAVE", "FIL", "SHIB", "APE", "INJ", "ETC", "APT", "PHB",
+                         "TON", "SUI", "PEPE", "WLD", "ONDO"};
   load_env();
   if (argc > 1) {
     printf(
         "\n  ASSET       PRICE           PRED     CHANGE\n  "
         "───────────────────────────────────────────\n");
     if (!strcmp(argv[1], "ALL")) {
-      pthread_t tids[10];
-      for (int i = 0; i < 10; i++) {
+      pthread_t tids[40];
+      for (int i = 0; i < 40; i++) {
         pthread_create(&tids[i], NULL, prediction_wrapper, (void *)coins[i]);
       }
-      for (int i = 0; i < 10; i++) {
+      for (int i = 0; i < 40; i++) {
         pthread_join(tids[i], NULL);
         PredictionResult pr = run_prediction(coins[i]);
         if (pr.success) {

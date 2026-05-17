@@ -14,9 +14,9 @@ typedef struct {
   long long timestamp;
 } OHLC;
 
-#define N_COINS 10
+#define N_COINS 40
 #define START_CAPITAL 20.0f
-#define TRADE_MARGIN 2.5f
+#define TRADE_MARGIN 1.0f
 #define LEVERAGE 5.0f
 #define FEE_PCT 0.001f
 #define SL_PCT 0.1f
@@ -145,14 +145,18 @@ void resample_to_daily(OHLC *hourly, int n_hours, OHLC *daily_out, int *n_days,
 }
 
 int main() {
-  const char *coins[N_COINS] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "LINK", "BNB", "AVAX"};
+  const char *coins[N_COINS] = {"ETH", "BTC", "BNB", "LTC", "ADA", "XLM", "XRP", "TRX", "LINK",
+                                "FET", "DASH", "ZEC", "ATOM", "DUSK", "DOGE", "HBAR", "CHZ", "STORJ", "JST",
+                                "DOT", "NMR", "SOL", "RUNE", "AVAX", "UNI",
+                                "BCH", "NEAR", "AAVE", "FIL", "SHIB", "APE", "INJ", "ETC", "APT", "PHB",
+                                "TON", "SUI", "PEPE", "WLD", "ONDO"};
   static OHLC hourly_data[N_COINS][14000];
   static OHLC daily_data[N_COINS][600];
   int offsets[N_COINS] = {0};
   uint8_t model_bufs[N_COINS][32768];
   Model *models[N_COINS];
 
-  printf("--- Shrimp Precise Backtest (10 Coins - 1H Path) ---\n");
+  printf("--- Shrimp Precise Backtest (40 Coins - 1H Path) ---\n");
   printf("Leverage: %.0fx | Shared Capital: $%.2f | Margin: $%.2f\n", LEVERAGE,
          START_CAPITAL, TRADE_MARGIN);
 
@@ -209,7 +213,7 @@ int main() {
     for (int c = 0; c < N_COINS; c++) {
       if (daily_trends[c] == 0) n_down++;
     }
-    if (n_down >= (int)(N_COINS * 0.9f)) {
+    if (n_down >= (int)(N_COINS * 0.8f)) {
       for (int c = 0; c < N_COINS; c++) {
         daily_trends[c] = 0;
       }
