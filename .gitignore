@@ -18,3 +18,4 @@ build/
 a35m
 backtest
 .env
+core.c

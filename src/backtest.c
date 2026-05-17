@@ -19,6 +19,7 @@ typedef struct {
 #define TRADE_MARGIN 2.5f
 #define LEVERAGE 5.0f
 #define FEE_PCT 0.001f
+#define SL_PCT 0.1f
 
 int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit,
                      const char *interval) {
@@ -182,7 +183,7 @@ int main() {
   int pos[N_COINS] = {0};
   float entry[N_COINS] = {0}, entry_notional[N_COINS] = {0},
         coin_pnl[N_COINS] = {0};
-  int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0};
+  int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0};
 
   int total_days = min_days;
   int start_day = total_days - 180;
@@ -244,6 +245,25 @@ int main() {
       }
     }
 
+    for (int c = 0; c < N_COINS; c++) {
+      if (pos[c] == 1) {
+        int h_start = offsets[c] + d * 24;
+        for (int h = 0; h < 24; h++) {
+          OHLC hour = hourly_data[c][h_start + h];
+          if (hour.low <= entry[c] * (1.0f - SL_PCT)) {
+            float loss = entry_notional[c] * SL_PCT;
+            float fee = entry_notional[c] * FEE_PCT * 2.0f;
+            capital -= (loss + fee);
+            coin_pnl[c] -= (loss + fee);
+            coin_sl[c]++;
+            coin_trades[c]++;
+            pos[c] = 0;
+            break;
+          }
+        }
+      }
+    }
+
     float daily_portfolio_value = capital;
     for (int c = 0; c < N_COINS; c++) {
       if (pos[c] == 1) {
@@ -283,20 +303,21 @@ int main() {
 
   printf("\nDetailed Performance per Coin (1H Path):\n");
   printf("-----------------------------------------------------------\n");
-  printf("  COIN   TRADES  WINS   WR(%%)    PnL Estim.\n");
+  printf("  COIN   TRADES  WINS  SL   WR(%%)    PnL Estim.\n");
   printf("-----------------------------------------------------------\n");
-  int total_t = 0, total_w = 0;
+  int total_t = 0, total_w = 0, total_s = 0;
   for (int c = 0; c < N_COINS; c++) {
     float wr =
         coin_trades[c] > 0 ? (float)coin_wins[c] / coin_trades[c] * 100 : 0;
-    printf("  %-5s  %4d  %4d   %5.1f%%   $%+6.2f\n", coins[c], coin_trades[c],
-           coin_wins[c], wr, coin_pnl[c]);
+    printf("  %-5s  %4d  %4d  %2d   %5.1f%%   $%+6.2f\n", coins[c], coin_trades[c],
+           coin_wins[c], coin_sl[c], wr, coin_pnl[c]);
     total_t += coin_trades[c];
     total_w += coin_wins[c];
+    total_s += coin_sl[c];
   }
   printf("-----------------------------------------------------------\n");
-  printf("  TOTAL  %4d  %4d   %5.1f%%   Bal: $%.2f  MDD: %.2f%%\n", total_t,
-         total_w, total_t > 0 ? (float)total_w / total_t * 100 : 0, capital,
+  printf("  TOTAL  %4d  %4d  %2d   %5.1f%%   Bal: $%.2f  MDD: %.2f%%\n", total_t,
+         total_w, total_s, total_t > 0 ? (float)total_w / total_t * 100 : 0, capital,
          max_dd);
   printf("-----------------------------------------------------------\n");
 
