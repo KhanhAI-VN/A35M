@@ -61,6 +61,36 @@
                     <td class="pred">--</td>
                     <td class="change">--</td>
                 </tr>
+                <tr id="row-XRP">
+                    <td class="coin-name"><span>XRP</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-DOGE">
+                    <td class="coin-name"><span>DOGE</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-LINK">
+                    <td class="coin-name"><span>LINK</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-BNB">
+                    <td class="coin-name"><span>BNB</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
+                <tr id="row-AVAX">
+                    <td class="coin-name"><span>AVAX</span></td>
+                    <td class="price">--</td>
+                    <td class="pred">--</td>
+                    <td class="change">--</td>
+                </tr>
             </tbody>
         </table>
 
@@ -79,13 +109,18 @@
     </div>
 
     <script>
-        const coins = ['BTC', 'ETH', 'SOL', 'SHIB', 'ADA'];
+        const coins = ['BTC', 'ETH', 'SOL', 'SHIB', 'ADA', 'XRP', 'DOGE', 'LINK', 'BNB', 'AVAX'];
         const prevData = {
             BTC: { price: 0, change: 0 },
             ETH: { price: 0, change: 0 },
             SOL: { price: 0, change: 0 },
             SHIB: { price: 0, change: 0 },
-            ADA: { price: 0, change: 0 }
+            ADA: { price: 0, change: 0 },
+            XRP: { price: 0, change: 0 },
+            DOGE: { price: 0, change: 0 },
+            LINK: { price: 0, change: 0 },
+            BNB: { price: 0, change: 0 },
+            AVAX: { price: 0, change: 0 }
         };
         let lastUpdateTime = Date.now();
 

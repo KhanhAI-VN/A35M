@@ -27,8 +27,11 @@ static char retrain_token[128] = {0};
 static int last_retrain_day = -1;
 static int last_retrain_year = -1;
 
-const char *g_coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
-int g_num_coins = 5;
+const char *g_coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "LINK", "BNB", "AVAX"};
+int g_num_coins = 10;
+
+#define MIN_CONF_UP 0.0198f
+#define MIN_CONF_UP_PCT ((expf(MIN_CONF_UP) - 1.0f) * 100.0f)
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body,
                                 int code, const char *type) {
@@ -121,7 +124,7 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c,
         json, 256,
         "{\"success\":%s,\"price\":%.2f,\"change\":%.2f,\"trend\":\"%s\"}",
         r.success ? "true" : "false", r.last_price, r.change_pct,
-        r.trend ? "UP" : "DOWN");
+        (r.pred_change_pct >= MIN_CONF_UP_PCT) ? "UP" : "DOWN");
     return send_res(c, json, 200, "application/json");
   }
   if (!strcmp(url, "/logo.png") || !strcmp(url, "/favicon.ico")) {
@@ -153,31 +156,35 @@ static void *prediction_wrapper(void *arg) {
 }
 
 int main(int argc, char **argv) {
-  const char *coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
+  const char *coins[] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "LINK", "BNB", "AVAX"};
   load_env();
   if (argc > 1) {
     printf(
         "\n  ASSET       PRICE           PRED     CHANGE\n  "
         "───────────────────────────────────────────\n");
     if (!strcmp(argv[1], "ALL")) {
-      pthread_t tids[5];
-      for (int i = 0; i < 5; i++) {
+      pthread_t tids[10];
+      for (int i = 0; i < 10; i++) {
         pthread_create(&tids[i], NULL, prediction_wrapper, (void *)coins[i]);
       }
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 10; i++) {
         pthread_join(tids[i], NULL);
         PredictionResult pr = run_prediction(coins[i]);
-        if (pr.success)
+        if (pr.success) {
+          int trend_up = (pr.pred_change_pct >= MIN_CONF_UP_PCT) ? 1 : 0;
           printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", coins[i],
-                 pr.last_price, pr.trend ? "UP" : "DOWN", pr.pred_change_pct,
+                 pr.last_price, trend_up ? "UP" : "DOWN", pr.pred_change_pct,
                  pr.change_pct);
+        }
       }
     } else {
       PredictionResult r = run_prediction(argv[1]);
-      if (r.success)
+      if (r.success) {
+        int trend_up = (r.pred_change_pct >= MIN_CONF_UP_PCT) ? 1 : 0;
         printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", argv[1],
-               r.last_price, r.trend ? "UP" : "DOWN", r.pred_change_pct,
+               r.last_price, trend_up ? "UP" : "DOWN", r.pred_change_pct,
                r.change_pct);
+      }
     }
     printf("  ───────────────────────────────────────────\n\n");
     return 0;

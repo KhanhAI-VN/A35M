@@ -14,12 +14,13 @@ typedef struct {
   long long timestamp;
 } OHLC;
 
-#define N_COINS 5
+#define N_COINS 10
 #define START_CAPITAL 20.0f
 #define TRADE_MARGIN 2.5f
 #define LEVERAGE 5.0f
 #define FEE_PCT 0.001f
 #define SL_PCT 0.1f
+#define MIN_CONF_UP 0.0198f
 
 int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit,
                      const char *interval) {
@@ -144,14 +145,14 @@ void resample_to_daily(OHLC *hourly, int n_hours, OHLC *daily_out, int *n_days,
 }
 
 int main() {
-  const char *coins[N_COINS] = {"BTC", "ETH", "SOL", "SHIB", "ADA"};
+  const char *coins[N_COINS] = {"BTC", "ETH", "SOL", "SHIB", "ADA", "XRP", "DOGE", "LINK", "BNB", "AVAX"};
   static OHLC hourly_data[N_COINS][14000];
   static OHLC daily_data[N_COINS][600];
   int offsets[N_COINS] = {0};
   uint8_t model_bufs[N_COINS][32768];
   Model *models[N_COINS];
 
-  printf("--- Shrimp Precise Backtest (5 Coins - 1H Path) ---\n");
+  printf("--- Shrimp Precise Backtest (10 Coins - 1H Path) ---\n");
   printf("Leverage: %.0fx | Shared Capital: $%.2f | Margin: $%.2f\n", LEVERAGE,
          START_CAPITAL, TRADE_MARGIN);
 
@@ -200,17 +201,23 @@ int main() {
         input[j] = (c1 > 0 && c2 > 0) ? logf(c2 / c1) : 0;
       }
       float pred = predict(models[c], input);
-      daily_trends[c] = (pred > 0) ? 1 : 0;
+      // Thay vì (pred > 0), ta chỉ kích hoạt tín hiệu UP khi độ tự tin vượt ngưỡng
+      daily_trends[c] = (pred >= MIN_CONF_UP) ? 1 : 0;
     }
 
     int n_down = 0;
     for (int c = 0; c < N_COINS; c++) {
       if (daily_trends[c] == 0) n_down++;
     }
-    if (n_down >= (int)(N_COINS * 0.8f)) {
+    if (n_down >= (int)(N_COINS * 0.9f)) {
       for (int c = 0; c < N_COINS; c++) {
         daily_trends[c] = 0;
       }
+    }
+
+    int n_up = 0;
+    for (int c = 0; c < N_COINS; c++) {
+      if (daily_trends[c] == 1) n_up++;
     }
 
     for (int c = 0; c < N_COINS; c++) {
@@ -230,7 +237,10 @@ int main() {
     for (int c = 0; c < N_COINS; c++) {
       if (pos[c] == 0 && daily_trends[c] == 1) {
         int h_start = offsets[c] + d * 24;
-        float current_margin = capital / N_COINS;
+        float current_margin = capital / n_up;
+        float max_cap_per_coin = 0.20f;
+        if (current_margin > capital * max_cap_per_coin)
+          current_margin = capital * max_cap_per_coin;
         float current_notional = current_margin * LEVERAGE;
 
         float prev_day_usd_vol =
