@@ -191,6 +191,7 @@ int main() {
 
   for (int d = start_day; d < total_days - 1; d++) {
     int daily_trends[N_COINS] = {0};
+    float preds[N_COINS] = {0};
 
     for (int c = 0; c < N_COINS; c++) {
       float input[SEQ_LEN];
@@ -200,9 +201,8 @@ int main() {
         float c2 = (float)daily_data[c][idx + 1].close;
         input[j] = (c1 > 0 && c2 > 0) ? logf(c2 / c1) : 0;
       }
-      float pred = predict(models[c], input);
-      // Thay vì (pred > 0), ta chỉ kích hoạt tín hiệu UP khi độ tự tin vượt ngưỡng
-      daily_trends[c] = (pred >= MIN_CONF_UP) ? 1 : 0;
+      preds[c] = predict(models[c], input);
+      daily_trends[c] = (preds[c] >= MIN_CONF_UP) ? 1 : 0;
     }
 
     int n_down = 0;
@@ -215,11 +215,25 @@ int main() {
       }
     }
 
+    // Sắp xếp coin UP theo pred giảm dần
+    int up_coins[N_COINS];
     int n_up = 0;
     for (int c = 0; c < N_COINS; c++) {
-      if (daily_trends[c] == 1) n_up++;
+      if (daily_trends[c] == 1) up_coins[n_up++] = c;
+    }
+    // Insertion sort by pred descending
+    for (int i = 1; i < n_up; i++) {
+      int key = up_coins[i];
+      float key_pred = preds[key];
+      int j = i - 1;
+      while (j >= 0 && preds[up_coins[j]] < key_pred) {
+        up_coins[j + 1] = up_coins[j];
+        j--;
+      }
+      up_coins[j + 1] = key;
     }
 
+    // Đóng lệnh: coin không còn tín hiệu UP
     for (int c = 0; c < N_COINS; c++) {
       if (pos[c] == 1 && daily_trends[c] == 0) {
         int h_start = offsets[c] + d * 24;
@@ -234,25 +248,42 @@ int main() {
       }
     }
 
-    for (int c = 0; c < N_COINS; c++) {
-      if (pos[c] == 0 && daily_trends[c] == 1) {
-        int h_start = offsets[c] + d * 24;
-        float current_margin = capital / n_up;
-        float max_cap_per_coin = 0.20f;
-        if (current_margin > capital * max_cap_per_coin)
-          current_margin = capital * max_cap_per_coin;
-        float current_notional = current_margin * LEVERAGE;
-
-        float prev_day_usd_vol =
-            daily_data[c][d - 1].volume * daily_data[c][d - 1].close;
-        if (current_notional > prev_day_usd_vol * 0.01f) {
-          current_notional = prev_day_usd_vol * 0.01f;
-        }
-
-        pos[c] = 1;
-        entry[c] = hourly_data[c][h_start].open;
-        entry_notional[c] = current_notional;
+    // Tính vốn khả dụng và số coin cần mở mới
+    int new_open[N_COINS] = {0};
+    int n_need_open = 0;
+    for (int i = 0; i < n_up; i++) {
+      int c = up_coins[i];
+      if (pos[c] == 0) {
+        new_open[n_need_open++] = c;
       }
+    }
+
+    // Chia vốn đều: giảm số coin cho đến khi mỗi coin >= $2 margin
+    #define MIN_MARGIN 2.0f
+    int n_alloc = n_need_open;
+    while (n_alloc > 0 && (capital / n_alloc) < MIN_MARGIN) {
+      n_alloc--;
+    }
+
+    // Mở lệnh từ coin có pred cao nhất xuống, chỉ n_alloc coin
+    for (int i = 0; i < n_alloc; i++) {
+      int c = new_open[i];
+      int h_start = offsets[c] + d * 24;
+      float current_margin = capital / n_alloc;
+      float max_cap_per_coin = 0.20f;
+      if (current_margin > capital * max_cap_per_coin)
+        current_margin = capital * max_cap_per_coin;
+      float current_notional = current_margin * LEVERAGE;
+
+      float prev_day_usd_vol =
+          daily_data[c][d - 1].volume * daily_data[c][d - 1].close;
+      if (current_notional > prev_day_usd_vol * 0.01f) {
+        current_notional = prev_day_usd_vol * 0.01f;
+      }
+
+      pos[c] = 1;
+      entry[c] = hourly_data[c][h_start].open;
+      entry_notional[c] = current_notional;
     }
 
     for (int c = 0; c < N_COINS; c++) {
