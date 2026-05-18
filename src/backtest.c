@@ -168,7 +168,7 @@ int main() {
     int nd = 0;
     resample_to_daily(hourly_data[c], nh, daily_data[c], &nd, &offsets[c]);
 
-    if (nd < SEQ_LEN + 181) {
+    if (nd < SEQ_LEN + 8) {
       printf("Error: Not enough data for %s (%d days)\n", coins[c], nd);
       return 1;
     }
@@ -183,6 +183,7 @@ int main() {
   }
 
   float capital = START_CAPITAL;
+  float prev_capital = START_CAPITAL;
   float peak_capital = START_CAPITAL;
   float max_dd = 0.0f;
   int pos[N_COINS] = {0};
@@ -191,7 +192,10 @@ int main() {
   int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0};
 
   int total_days = min_days;
-  int start_day = total_days - 180;
+  int start_day = total_days - 7;
+
+  printf("\n  DATE         BALANCE   PnL%%\n");
+  printf("  -----------------------------------\n");
 
   for (int d = start_day; d < total_days - 1; d++) {
     int daily_trends[N_COINS] = {0};
@@ -252,7 +256,7 @@ int main() {
       }
     }
 
-    // Tính vốn khả dụng và số coin cần mở mới
+    // Tính coin cần mở mới
     int new_open[N_COINS] = {0};
     int n_need_open = 0;
     for (int i = 0; i < n_up; i++) {
@@ -262,39 +266,64 @@ int main() {
       }
     }
 
-    // Chia vốn đều: giảm số coin cho đến khi mỗi coin >= $2 margin
-    #define MIN_MARGIN 2.0f
-    int n_alloc = n_need_open;
-    while (n_alloc > 0 && (capital / n_alloc) < MIN_MARGIN) {
-      n_alloc--;
-    }
+    // Chia hết toàn bộ vốn, chỉ giới hạn 1% thanh khoản
+    if (n_need_open > 0) {
+      float notional_alloc[N_COINS] = {0};
+      int capped[N_COINS] = {0};
+      float remaining_capital = capital;
+      int remaining_coins = n_need_open;
 
-    // Mở lệnh từ coin có pred cao nhất xuống, chỉ n_alloc coin
-    for (int i = 0; i < n_alloc; i++) {
-      int c = new_open[i];
-      int h_start = offsets[c] + d * 24;
-      float current_margin = capital / n_alloc;
-      float max_cap_per_coin = 0.20f;
-      if (current_margin > capital * max_cap_per_coin)
-        current_margin = capital * max_cap_per_coin;
-      float current_notional = current_margin * LEVERAGE;
+      // Lặp phân bổ: coin bị cap volume → dư ra chia cho coin còn lại
+      for (int pass = 0; pass < n_need_open && remaining_coins > 0; pass++) {
+        float margin_each = remaining_capital / remaining_coins;
+        float notional_each = margin_each * LEVERAGE;
+        int any_capped = 0;
 
-      float prev_day_usd_vol =
-          daily_data[c][d - 1].volume * daily_data[c][d - 1].close;
-      if (current_notional > prev_day_usd_vol * 0.01f) {
-        current_notional = prev_day_usd_vol * 0.01f;
+        for (int i = 0; i < n_need_open; i++) {
+          if (capped[i]) continue;
+          int c = new_open[i];
+          float vol_cap = daily_data[c][d - 1].volume *
+                          daily_data[c][d - 1].close * 0.01f;
+          if (notional_each > vol_cap) {
+            notional_alloc[i] = vol_cap;
+            capped[i] = 1;
+            remaining_capital -= vol_cap / LEVERAGE;
+            remaining_coins--;
+            any_capped = 1;
+          }
+        }
+
+        if (!any_capped) {
+          // Không coin nào bị cap → chia đều phần còn lại
+          for (int i = 0; i < n_need_open; i++) {
+            if (!capped[i]) {
+              notional_alloc[i] = margin_each * LEVERAGE;
+            }
+          }
+          break;
+        }
       }
 
-      pos[c] = 1;
-      entry[c] = hourly_data[c][h_start].open;
-      entry_notional[c] = current_notional;
+      // Mở lệnh
+      for (int i = 0; i < n_need_open; i++) {
+        if (notional_alloc[i] <= 0) continue;
+        int c = new_open[i];
+        int h_start = offsets[c] + d * 24;
+        pos[c] = 1;
+        entry[c] = hourly_data[c][h_start].open;
+        entry_notional[c] = notional_alloc[i];
+      }
     }
 
-    for (int c = 0; c < N_COINS; c++) {
-      if (pos[c] == 1) {
-        int h_start = offsets[c] + d * 24;
-        for (int h = 0; h < 24; h++) {
-          OHLC hour = hourly_data[c][h_start + h];
+    // Check SL + Take-profit mỗi giờ
+    #define TP_NET_PCT 4.5f
+    #define TP_FEE_PER_COIN 0.2f
+    for (int h = 0; h < 24; h++) {
+      // 1. Check SL từng coin
+      for (int c = 0; c < N_COINS; c++) {
+        if (pos[c] == 1) {
+          int h_idx = offsets[c] + d * 24 + h;
+          OHLC hour = hourly_data[c][h_idx];
           if (hour.low <= entry[c] * (1.0f - SL_PCT)) {
             float loss = entry_notional[c] * SL_PCT;
             float fee = entry_notional[c] * FEE_PCT * 2.0f;
@@ -303,9 +332,41 @@ int main() {
             coin_sl[c]++;
             coin_trades[c]++;
             pos[c] = 0;
-            break;
           }
         }
+      }
+
+      // 2. Tính Total UP và Total Fee (giống web.html)
+      float total_up = 0;
+      int n_open = 0;
+      for (int c = 0; c < N_COINS; c++) {
+        if (pos[c] == 1) {
+          int h_idx = offsets[c] + d * 24 + h;
+          float cur_price = hourly_data[c][h_idx].close;
+          float pct_change = (cur_price - entry[c]) / entry[c] * 100.0f;
+          total_up += pct_change;
+          n_open++;
+        }
+      }
+      float total_fee = n_open * TP_FEE_PER_COIN;
+      float net = total_up - total_fee;
+
+      // 3. Nếu net >= 4.5% → đóng toàn bộ lệnh chốt lời
+      if (n_open > 0 && net >= TP_NET_PCT) {
+        for (int c = 0; c < N_COINS; c++) {
+          if (pos[c] == 1) {
+            int h_idx = offsets[c] + d * 24 + h;
+            float exit_price = hourly_data[c][h_idx].close;
+            float pnl = (exit_price - entry[c]) / entry[c] * entry_notional[c];
+            float fee = entry_notional[c] * FEE_PCT * 2.0f;
+            capital += (pnl - fee);
+            coin_pnl[c] += (pnl - fee);
+            coin_trades[c]++;
+            if (pnl > fee) coin_wins[c]++;
+            pos[c] = 0;
+          }
+        }
+        break; // Đã đóng hết, không cần check giờ tiếp
       }
     }
 
@@ -318,6 +379,15 @@ int main() {
         daily_portfolio_value += (pnl - fee);
       }
     }
+
+    // In PnL% so với ngày trước
+    float day_pnl_pct = (prev_capital > 0) ? (daily_portfolio_value - prev_capital) / prev_capital * 100.0f : 0;
+    time_t ts = (time_t)(daily_data[0][d].timestamp / 1000);
+    struct tm *tm = gmtime(&ts);
+    printf("  %04d-%02d-%02d  $%7.2f  %+6.2f%%\n",
+           tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+           daily_portfolio_value, day_pnl_pct);
+    prev_capital = daily_portfolio_value;
 
     if (daily_portfolio_value > peak_capital) {
       peak_capital = daily_portfolio_value;
@@ -346,25 +416,10 @@ int main() {
     }
   }
 
-  printf("\nDetailed Performance per Coin (1H Path):\n");
-  printf("-----------------------------------------------------------\n");
-  printf("  COIN   TRADES  WINS  SL   WR(%%)    PnL Estim.\n");
-  printf("-----------------------------------------------------------\n");
-  int total_t = 0, total_w = 0, total_s = 0;
-  for (int c = 0; c < N_COINS; c++) {
-    float wr =
-        coin_trades[c] > 0 ? (float)coin_wins[c] / coin_trades[c] * 100 : 0;
-    printf("  %-5s  %4d  %4d  %2d   %5.1f%%   $%+6.2f\n", coins[c], coin_trades[c],
-           coin_wins[c], coin_sl[c], wr, coin_pnl[c]);
-    total_t += coin_trades[c];
-    total_w += coin_wins[c];
-    total_s += coin_sl[c];
-  }
-  printf("-----------------------------------------------------------\n");
-  printf("  TOTAL  %4d  %4d  %2d   %5.1f%%   Bal: $%.2f  MDD: %.2f%%\n", total_t,
-         total_w, total_s, total_t > 0 ? (float)total_w / total_t * 100 : 0, capital,
-         max_dd);
-  printf("-----------------------------------------------------------\n");
+  float total_pnl_pct = (START_CAPITAL > 0) ? (capital - START_CAPITAL) / START_CAPITAL * 100.0f : 0;
+  printf("-------------------------------------------\n");
+  printf("  Final: $%.2f | PnL: %+.2f%% | MDD: %.2f%%\n", capital, total_pnl_pct, max_dd);
+  printf("-------------------------------------------\n");
 
   return 0;
 }
