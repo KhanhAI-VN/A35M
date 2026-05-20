@@ -49,7 +49,11 @@ static void run_inference_task(uv_work_t *req) {
   InferenceTask *task = (InferenceTask *)req->data;
   const char *cname = task->coin;
 
-  CoinCache *cache = get_coin_cache(cname);
+  CoinCache *cache = safe_cache_acquire(cname);
+  if (!cache) {
+    log_error("Failed to acquire cache for coin %s", cname);
+    return;
+  }
   pthread_mutex_lock(&cache->coin_mutex);
 
   if (!cache->model) {
@@ -73,6 +77,7 @@ static void run_inference_task(uv_work_t *req) {
     stbsp_snprintf(cache->last_res.error_msg, sizeof(cache->last_res.error_msg),
                    !cache->model ? "Model error" : "Data error");
     pthread_mutex_unlock(&cache->coin_mutex);
+    safe_cache_release(cache);
     return;
   }
 
@@ -96,6 +101,11 @@ static void run_inference_task(uv_work_t *req) {
                                  (end.tv_usec - start.tv_usec) / 1000.0;
   cache->last_res.pred_change_pct =
       cache->last_res.success ? (expf(p_val) - 1.0f) * 100.0f : 0;
+  
+  float sum_vol = 0;
+  for (int i = 0; i < SEQ_LEN; i++) sum_vol += fabsf(cache->input[i]);
+  float avg_vol = sum_vol / SEQ_LEN;
+  cache->last_res.avg_volatility_pct = (expf(avg_vol) - 1.0f) * 100.0f;
 
   time_t pred_ts =
       (cache->klines[cache->kline_count - 1].timestamp) / 1000 + 86400;
@@ -114,10 +124,12 @@ static void run_inference_task(uv_work_t *req) {
           : 0;
   cache->last_res.pred_price =
       cache->last_res.last_price * expf(cache->pred_log_diff);
+  float vt = cache->last_res.avg_volatility_pct;
   cache->last_res.trend =
-      (cache->last_res.pred_price > cache->last_res.last_price) ? 1 : 0;
+      (vt > 0.0f && cache->last_res.pred_change_pct >= vt * 1.0f) ? 1 : 0;
 
   pthread_mutex_unlock(&cache->coin_mutex);
+  safe_cache_release(cache);
 }
 
 static void on_inference_done(uv_work_t *req, int status) {
@@ -323,7 +335,6 @@ static inline void *start_async_engine(void *arg) {
 
   loop = uv_default_loop();
 
-  curl_global_init(CURL_GLOBAL_ALL);
   curl_handle = curl_multi_init();
   curl_multi_setopt(curl_handle, CURLMOPT_SOCKETFUNCTION, handle_socket);
   curl_multi_setopt(curl_handle, CURLMOPT_TIMERFUNCTION, start_timeout);
@@ -339,7 +350,6 @@ static inline void *start_async_engine(void *arg) {
   uv_run(loop, UV_RUN_DEFAULT);
 
   curl_multi_cleanup(curl_handle);
-  curl_global_cleanup();
   return NULL;
 }
 

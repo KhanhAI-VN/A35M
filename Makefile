@@ -8,12 +8,12 @@ a35m: tools/patch.py
 
 .PHONY: backtest
 
-backtest: src/backtest.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c src/include/models.h src/include/inference.h
-	$(CC) $(CFLAGS) src/backtest.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c -o backtest $(LDFLAGS)
+backtest: src/backtest.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c 3libs/safe_cache.c src/include/models.h src/include/inference.h
+	$(CC) $(CFLAGS) src/backtest.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c 3libs/safe_cache.c -o backtest $(LDFLAGS)
 	./backtest
 
-test_conf: src/test_conf.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c src/include/models.h src/include/inference.h
-	$(CC) $(CFLAGS) src/test_conf.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c -o test_conf $(LDFLAGS)
+test_conf: src/test_conf.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c 3libs/safe_cache.c src/include/models.h src/include/inference.h
+	$(CC) $(CFLAGS) src/test_conf.c 3libs/sds.c 3libs/yyjson.c 3libs/log.c 3libs/hashmap.c 3libs/safe_cache.c -o test_conf $(LDFLAGS)
 	./test_conf BTC
 
 clean:

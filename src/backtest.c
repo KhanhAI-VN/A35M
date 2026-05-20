@@ -19,8 +19,7 @@ typedef struct {
 #define TRADE_MARGIN 1.0f
 #define LEVERAGE 5.0f
 #define FEE_PCT 0.001f
-#define SL_PCT 0.1f
-#define MIN_CONF_UP 0.0198f
+#define SL_PCT 0.10f
 
 int fetch_ohlc_multi(const char *symbol, OHLC *out, int limit,
                      const char *interval) {
@@ -192,7 +191,7 @@ int main() {
   int coin_trades[N_COINS] = {0}, coin_wins[N_COINS] = {0}, coin_sl[N_COINS] = {0};
 
   int total_days = min_days;
-  int start_day = total_days - 7;
+  int start_day = total_days - 365;
 
   printf("\n  DATE         BALANCE   PnL%%\n");
   printf("  -----------------------------------\n");
@@ -203,21 +202,24 @@ int main() {
 
     for (int c = 0; c < N_COINS; c++) {
       float input[SEQ_LEN];
+      float sum_vol = 0;
       for (int j = 0; j < SEQ_LEN; j++) {
         int idx = d - 1 - SEQ_LEN + j;
         float c1 = (float)daily_data[c][idx].close;
         float c2 = (float)daily_data[c][idx + 1].close;
         input[j] = (c1 > 0 && c2 > 0) ? logf(c2 / c1) : 0;
+        sum_vol += fabsf(input[j]);
       }
       preds[c] = predict(models[c], input);
-      daily_trends[c] = (preds[c] >= MIN_CONF_UP) ? 1 : 0;
+      float avg_vol = sum_vol / SEQ_LEN;
+      daily_trends[c] = (preds[c] >= avg_vol * 1.0f) ? 1 : 0;
     }
 
     int n_down = 0;
     for (int c = 0; c < N_COINS; c++) {
       if (daily_trends[c] == 0) n_down++;
     }
-    if (n_down >= (int)(N_COINS * 0.8f)) {
+    if (n_down >= (int)(N_COINS * 0.70f)) {
       for (int c = 0; c < N_COINS; c++) {
         daily_trends[c] = 0;
       }
@@ -276,6 +278,9 @@ int main() {
       // Lặp phân bổ: coin bị cap volume → dư ra chia cho coin còn lại
       for (int pass = 0; pass < n_need_open && remaining_coins > 0; pass++) {
         float margin_each = remaining_capital / remaining_coins;
+        if (margin_each > capital * 0.10f) {
+          margin_each = capital * 0.10f;
+        }
         float notional_each = margin_each * LEVERAGE;
         int any_capped = 0;
 

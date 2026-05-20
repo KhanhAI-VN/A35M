@@ -149,7 +149,11 @@ static inline PredictionResult run_prediction(const char *coin) {
   char symbol[32];
   stbsp_snprintf(symbol, sizeof(symbol), "%sUSDT", cname);
 
-  CoinCache *cache = get_coin_cache(cname);
+  CoinCache *cache = safe_cache_acquire(cname);
+  if (!cache) {
+    log_error("Failed to acquire cache for coin %s (cache full/pinned)", cname);
+    return (PredictionResult){.success = 0, .coin = "", .error_msg = "Cache full"};
+  }
   pthread_mutex_lock(&cache->coin_mutex);
 
   if (should_update_cache(cache)) {
@@ -161,6 +165,7 @@ static inline PredictionResult run_prediction(const char *coin) {
       free(l_model_buf);
       free(l_kline_buf);
       log_error("Memory allocation failed for coin %s", cname);
+      safe_cache_release(cache);
       return (PredictionResult){
           .success = 0, .coin = "", .error_msg = "Memory error"};
     }
@@ -168,7 +173,6 @@ static inline PredictionResult run_prediction(const char *coin) {
     int m_len = download_model_from_github(cname, l_model_buf, 18 * 1024);
     int f_count = fetch_binance_data(symbol, l_kline_buf, SEQ_LEN + 2);
 
-    cache = get_coin_cache(cname);
     pthread_mutex_lock(&cache->coin_mutex);
     if (should_update_cache(cache)) {
       uint8_t pool_idx = (uint8_t)(cache - caches);
@@ -186,6 +190,7 @@ static inline PredictionResult run_prediction(const char *coin) {
         pthread_mutex_unlock(&cache->coin_mutex);
         free(l_model_buf);
         free(l_kline_buf);
+        safe_cache_release(cache);
         return res;
       }
 
@@ -214,6 +219,10 @@ static inline PredictionResult run_prediction(const char *coin) {
                                      (end.tv_usec - start.tv_usec) / 1000.0;
       cache->last_res.pred_change_pct =
           cache->last_res.success ? (expf(p_val) - 1.0f) * 100.0f : 0;
+      float sum_vol = 0;
+      for (int i = 0; i < SEQ_LEN; i++) sum_vol += fabsf(cache->input[i]);
+      float avg_vol = sum_vol / SEQ_LEN;
+      cache->last_res.avg_volatility_pct = (expf(avg_vol) - 1.0f) * 100.0f;
 
       time_t pred_ts =
           (cache->klines[cache->kline_count - 1].timestamp) / 1000 + 86400;
@@ -242,13 +251,15 @@ static inline PredictionResult run_prediction(const char *coin) {
             : 0;
     cache->last_res.pred_price =
         cache->last_res.last_price * expf(cache->pred_log_diff);
+    float vt = cache->last_res.avg_volatility_pct;
     cache->last_res.trend =
-        (cache->last_res.pred_price > cache->last_res.last_price) ? 1 : 0;
+        (vt > 0.0f && cache->last_res.pred_change_pct >= vt * 1.0f) ? 1 : 0;
   }
 
   PredictionResult res = cache->last_res;
   memcpy(res.coin, cache->coin, sizeof(res.coin));
   pthread_mutex_unlock(&cache->coin_mutex);
+  safe_cache_release(cache);
   return res;
 }
 

@@ -34,8 +34,7 @@ const char *g_coins[] = {"ETH", "BTC", "BNB", "LTC", "ADA", "XLM", "XRP", "TRX",
                          "TON", "SUI", "PEPE", "WLD", "ONDO"};
 int g_num_coins = 40;
 
-#define MIN_CONF_UP 0.0198f
-#define MIN_CONF_UP_PCT ((expf(MIN_CONF_UP) - 1.0f) * 100.0f)
+
 
 static enum MHD_Result send_res(struct MHD_Connection *c, const char *body,
                                 int code, const char *type) {
@@ -118,17 +117,21 @@ static enum MHD_Result handler(void *cls, struct MHD_Connection *c,
     const char *coin =
         MHD_lookup_connection_value(c, MHD_GET_ARGUMENT_KIND, "coin");
     const char *cname = coin ? coin : "BTC";
-    CoinCache *cache = get_coin_cache(cname);
-    pthread_mutex_lock(&cache->coin_mutex);
-    PredictionResult r = cache->last_res;
-    pthread_mutex_unlock(&cache->coin_mutex);
+    CoinCache *cache = safe_cache_acquire(cname);
+    PredictionResult r = {0};
+    if (cache) {
+      pthread_mutex_lock(&cache->coin_mutex);
+      r = cache->last_res;
+      pthread_mutex_unlock(&cache->coin_mutex);
+      safe_cache_release(cache);
+    }
 
     char json[256];
     stbsp_snprintf(
         json, 256,
         "{\"success\":%s,\"price\":%.2f,\"change\":%.2f,\"trend\":\"%s\"}",
         r.success ? "true" : "false", r.last_price, r.change_pct,
-        (r.pred_change_pct >= MIN_CONF_UP_PCT) ? "UP" : "DOWN");
+        r.trend ? "UP" : "DOWN");
     return send_res(c, json, 200, "application/json");
   }
   if (!strcmp(url, "/logo.png") || !strcmp(url, "/favicon.ico")) {
@@ -165,6 +168,8 @@ int main(int argc, char **argv) {
                          "DOT", "NMR", "SOL", "RUNE", "AVAX", "UNI",
                          "BCH", "NEAR", "AAVE", "FIL", "SHIB", "APE", "INJ", "ETC", "APT", "PHB",
                          "TON", "SUI", "PEPE", "WLD", "ONDO"};
+  curl_global_init(CURL_GLOBAL_ALL);
+  safe_cache_init();
   load_env();
   if (argc > 1) {
     printf(
@@ -179,22 +184,23 @@ int main(int argc, char **argv) {
         pthread_join(tids[i], NULL);
         PredictionResult pr = run_prediction(coins[i]);
         if (pr.success) {
-          int trend_up = (pr.pred_change_pct >= MIN_CONF_UP_PCT) ? 1 : 0;
-          printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", coins[i],
+          int trend_up = pr.trend;
+          printf("  %-10s  $%-13.2f  %-7s (%+.2f%% | vol=%.2f%%)  %+.2f%%\n", coins[i],
                  pr.last_price, trend_up ? "UP" : "DOWN", pr.pred_change_pct,
-                 pr.change_pct);
+                 pr.avg_volatility_pct, pr.change_pct);
         }
       }
     } else {
       PredictionResult r = run_prediction(argv[1]);
       if (r.success) {
-        int trend_up = (r.pred_change_pct >= MIN_CONF_UP_PCT) ? 1 : 0;
+        int trend_up = r.trend;
         printf("  %-10s  $%-13.2f  %-7s (%+.2f%%)  %+.2f%%\n", argv[1],
                r.last_price, trend_up ? "UP" : "DOWN", r.pred_change_pct,
                r.change_pct);
       }
     }
     printf("  ───────────────────────────────────────────\n\n");
+    curl_global_cleanup();
     return 0;
   }
 
@@ -219,6 +225,7 @@ int main(int argc, char **argv) {
                                           0, 0, &handler, 0, MHD_OPTION_END);
   if (!d) {
     log_fatal("Failed to start HTTP daemon on port 8080");
+    curl_global_cleanup();
     return 1;
   }
   log_info("Shrimp Dashboard started on http://localhost:8080");
@@ -231,5 +238,6 @@ int main(int argc, char **argv) {
   MHD_stop_daemon(d);
   if (html) sdsfree(html);
   if (css) sdsfree(css);
+  curl_global_cleanup();
   return 0;
 }

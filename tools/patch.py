@@ -10,6 +10,7 @@ HEADERS = [
     "3libs/stb_sprintf.h",
     "3libs/arena.h",
     "src/include/models.h",
+    "3libs/safe_cache.h",
     "src/include/cache.h",
     "src/include/inference.h",
     "src/include/async.h"
@@ -20,6 +21,7 @@ SOURCES = [
     "3libs/yyjson.c",
     "3libs/log.c",
     "3libs/hashmap.c",
+    "3libs/safe_cache.c",
     "src/main.c"
 ]
 
